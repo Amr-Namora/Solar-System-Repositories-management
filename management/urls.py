@@ -1,0 +1,50 @@
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    path('home/', views.home, name='home'),
+    path('homeRead/', views.homeRead, name='homeRead'),
+    path('home_for_reposotory_workshop/', views.home_for_reposotory_workshop, name='home_for_reposotory_workshop'),
+
+    path('myStore/', views.myStore, name='myStore'),
+    path('product_details/', views.product_details, name='product_details'),
+    path('product_types/', views.product_types, name='product_types'),
+    path('notification/', views.notification, name='notification'),
+    path('add_class/', views.add_class, name='add_class'),
+    path('add_product/', views.add_product, name='add_product'),
+    path('changetype/', views.changetype, name='changetype'),
+    path('history_changes/', views.history_changes, name='history_changes'),
+    path('reserve/', views.reserve, name='reserve'),
+    path('newreservation/', views.newreservation, name='newreservation'),
+    path('settings/', views.settings, name='settings'),
+    path('is_staff/', views.is_staff, name='is_staff'),
+    path('cancle_reservation/', views.cancle_reservation, name='cancle_reservation'),
+    path('confirm_reservation/', views.confirm_reservation, name='confirm_reservation'),
+    path('confirm_requested_reservation/', views.confirm_requested_reservation, name='confirm_requested_reservation'),
+
+    path('send_reservation/', views.send_reservation, name='send_reservation'),
+    path('send_requested_reservation/', views.send_requested_reservation, name='send_requested_reservation'),
+    path('edit_product_name/', views.edit_product_name, name='edit_product_name'),
+
+    path('search/', views.search_materials, name='search-materials'),
+    path('class_type_name/', views.class_type_name, name='class_type_name'),
+    path('class_type_delete/', views.class_type_delete, name='class_type_delet'),
+    path('addReposotories/', views.addReposotory, name='addReposotories'),
+    path('reposotories/', views.reposotory, name='reposotories'),
+    path('turnResevation/', views.turnResevation, name='turnResevation'),
+    path('confirmTurnResevation/', views.confirmTurnResevation, name='confirmTurnResevation'),
+    path('cancelTurnResevation/', views.cancelTurnResevation, name='cancelTurnResevation'),
+    path('sell/', views.sell, name='sell'),
+    path('reposotories/toggle-status/', views.reposotoryToggleStatusView, name='reposotories-user'),
+    path('workshops/', views.workshops, name='workshops'),
+    path('addWorkshop/', views.addWorkshop, name='addWorkshop'),
+    path('addClassToWorkshop/', views.addClassToWorkshop, name='addClassToWorkshop'),
+    path('Assign_manager_Workshop/', views.Assign_manager_Workshop, name='Assign_manager_Workshop'),
+    path('Workshop_details/', views.Workshop_details, name='Workshop_details'),
+    path('WorkshopToggleStatusView/', views.WorkshopToggleStatusView, name='WorkshopToggleStatusView'),
+    path('reposotories_for_workshop/', views.reposotories_for_workshop, name='reposotories_for_workshop'),
+    path('end_workshop/', views.end_workshop, name='end_workshop'),
+    path('unused_amount/', views.unused_amount, name='unused_amount'),
+path('user-allowed-repositories/<int:user_id>/', views.user_allowed_repositories, name='user_allowed_repositories'),
+
+]
