@@ -10,7 +10,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 AUTH_USER_MODEL = 'account.CustomUser'
 
 SECRET_KEY = os.getenv('SECRET_KEY', 'fallback-key-for-dev-only')
-DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
+DEBUG = os.getenv('DEBUG', 'False').lower() == 'True'
 
 ALLOWED_HOSTS = ['192.168.93.134','192.168.1.101','127.0.0.1','192.168.92.59','www.revesyria.com']
 
