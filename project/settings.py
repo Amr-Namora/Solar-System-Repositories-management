@@ -12,7 +12,7 @@ AUTH_USER_MODEL = 'account.CustomUser'
 SECRET_KEY = os.getenv('SECRET_KEY', 'fallback-key-for-dev-only')
 DEBUG = os.getenv('DEBUG', 'False').lower() == 'True'
 
-ALLOWED_HOSTS = ['192.168.93.134','192.168.1.101','127.0.0.1','192.168.92.59','www.revesyria.com']
+ALLOWED_HOSTS = ['192.168.93.134','192.168.1.101','127.0.0.1','192.168.92.59','https://solar-system-repositories-management.onrender.com']
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -44,7 +44,7 @@ MIDDLEWARE = [
 # CORS Settings
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = [
-    'https://www.revesyria.com',
+    'https://solar-system-repositories-management.onrender.com',
     'https://revesyria.com',
     'http://127.0.0.1:8000',
     'http://192.168.1.101:8081',
@@ -55,7 +55,7 @@ CORS_ALLOWED_ORIGINS = [
 
 ]
 CSRF_TRUSTED_ORIGINS = [
-    'https://www.revesyria.com',
+    'https://solar-system-repositories-management.onrender.com',
     'https://revesyria.com',
     'http://127.0.0.1:8000',
     'http://192.168.1.101:8081',
