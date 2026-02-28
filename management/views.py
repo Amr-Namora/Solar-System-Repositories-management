@@ -1,12 +1,13 @@
 from itertools import product
+from urllib import request
 from django.contrib.auth.models import Group
 from rest_framework.status import HTTP_200_OK, HTTP_201_CREATED, HTTP_400_BAD_REQUEST, HTTP_404_NOT_FOUND
 from rest_framework.views import APIView
 from rest_framework import status
-from .models import Product, Amounts, Notification, Class, Add_Delete, Reservations, Reposotory
+from .models import Product, Amounts, Notification, Class, Add_Delete, Reservations, Reposotory, PushToken
 from .serializers import AmountsTypeSerializer, ReservationsSerializer, ClassSerializer, ProductSerializer, \
     AmountsSerializer, \
-    NotificationSerializer, Add_DeleteSerializer, AmountsAsProductSerializer, ReposotorySerializer
+    NotificationSerializer, Add_DeleteSerializer, AmountsAsProductSerializer, ReposotorySerializer ,BillsSerializer
 from django.contrib.auth import get_user_model
 from django.http import HttpRequest
 from django.utils import timezone
@@ -18,9 +19,9 @@ from .serializers import AmountsAsProductSerializer
 from .filters import Add_Delete_filter
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from .models import Add_Delete,Workshop
+from .models import Add_Delete,Workshop,Bill
 from .serializers import Add_DeleteSerializer,WorkshopSerializer
-User = get_user_model()
+
 from .filters import home_filter
 import django_filters
 
@@ -35,7 +36,7 @@ from datetime import datetime, timedelta
 from .filters import Add_Delete_filter
 from .serializers import Add_DeleteSerializer
 
-
+User = get_user_model()
 
 
 @api_view(['GET'])
@@ -55,12 +56,12 @@ def is_staff(request):
 def home(request):
     reposotory_name=request.GET.get('reposotory_name')
     # 1. compute totals from Product
-    is_manager = request.user.groups.filter(name="staff").exists()
-
+    is_manager = request.user.groups.filter(name="staff").exists() 
+    is_store_keeper = request.user.groups.filter(name="StoreKeeper").exists()
     if reposotory_name:
         reposotory=Reposotory.objects.filter(name=reposotory_name).first()
 
-        if is_manager:
+        if is_manager or is_store_keeper:
             base_qs = Product.objects.filter(reposotory=reposotory)
         # base_qs = Product.objects.all()
         else:
@@ -69,7 +70,7 @@ def home(request):
                 productt__classs__is_available__in=['قيد الوصول', 'متاح']
             ).distinct()
     else :
-        if is_manager:
+        if is_manager or is_store_keeper:
             base_qs = Product.objects.all()
         # base_qs = Product.objects.all()
         else:
@@ -499,10 +500,11 @@ def class_type_delete(request):
 def notification(request):
     user = request.user
     is_manager = request.user.groups.filter(name="staff").exists()
-
     user=request.user
-
+   
+    
     notifications=Notification.objects.filter(user=user).order_by('-createAt')
+    
     serializer=NotificationSerializer(notifications,many=True,
                                       context={'request': request})
     print(1)
@@ -511,6 +513,34 @@ def notification(request):
         'is_manager': is_manager,
 
     })
+
+
+@api_view(['POST'])
+def register_push_token(request):
+    """Register or update a push token for the authenticated user.
+    Expects JSON: {"push_token": "ExponentPushToken[...]", "platform": "android"}
+    """
+    token = request.data.get('push_token')
+    platform = request.data.get('platform', '')
+    if not token:
+        return Response({'detail': 'push_token is required'}, status=HTTP_400_BAD_REQUEST)
+
+    obj, created = PushToken.objects.update_or_create(
+        token=token,
+        defaults={'user': request.user if request.user and request.user.is_authenticated else None, 'platform': platform, 'is_active': True}
+    )
+    return Response({'detail': 'registered'}, status=HTTP_200_OK)
+
+
+@api_view(['POST'])
+def unregister_push_token(request):
+    """Unregister a push token (delete or deactivate). Expects {"push_token": "..."}"""
+    token = request.data.get('push_token')
+    if not token:
+        return Response({'detail': 'push_token is required'}, status=HTTP_400_BAD_REQUEST)
+
+    PushToken.objects.filter(token=token).delete()
+    return Response({'detail': 'unregistered'}, status=HTTP_200_OK)
 
 
 @api_view(['GET'])
@@ -569,12 +599,17 @@ def newreservation(request):
     print('newreservation')
     user = request.user
     print('user',user)
-
+    data = {
+        'reposotory_id': request.GET.get('reposotory_id'),
+        'workshop_id': request.GET.get('workshop_id'),
+    }
+    print('data',data  )
+    is_store_keeper = request.user.groups.filter(name="StoreKeeper").exists()
     username = user.username
-   
+    is_workshop_manager = request.user.groups.filter(name="WorkShopManagers").exists()
     print('username',username)
-
     is_manager = request.user.groups.filter(name="staff").exists()
+
     if   request.user.groups.filter(name="WorkShopManagers").exists():
         details = Reservations.objects.filter(
             Q(user=request.user) |
@@ -584,6 +619,17 @@ def newreservation(request):
         ).order_by('-createAt')    
     elif is_manager:
         details = Reservations.objects.all().order_by('-createAt')
+    elif is_store_keeper:
+        details = Reservations.objects.filter(
+            Q(user=request.user) |
+            Q(newOwner=request.user) |
+            Q(product_class__product__reposotory__name=request.user.repository.name)|
+            Q(workshop__manager=request.user) |
+            Q(user__store__name=request.user.repository.name),
+        ).order_by('-createAt')
+        print(user)
+        print(user.repository.name)
+
     else:
         details = Reservations.objects.filter(
             Q(user=request.user) |
@@ -592,7 +638,15 @@ def newreservation(request):
             Q(workshop__manager=request.user) |
             Q(user__store__name=request.user.store.name),
         ).order_by('-createAt')
+    print(10)
 
+    if data['reposotory_id']:
+        rep=Reposotory.objects.get(id=data['reposotory_id'])    
+        details = details.filter(Q(user__store__name=rep.name) | Q(user__repository__name=rep.name))
+
+    if data['workshop_id']:
+        details = details.filter(workshop__id=data['workshop_id'])
+    print(11)
     # Classification logic
     now = timezone.now()
     five_days_ago = now - timedelta(days=5)
@@ -613,7 +667,10 @@ def newreservation(request):
 
     serializer = ReservationsSerializer(details, many=True, context={'request': request})
     return Response({
+        'count':details.count(),
         'is_manager': is_manager,
+        'is_workshop_manager': is_workshop_manager,
+        'is_store_keeper': is_store_keeper,
         'username': username,
         'details': serializer.data,
         'counts': {
@@ -656,6 +713,7 @@ def settings(request):
         # send a number, not a QuerySet
         'non_approved_reservations': non_approved_qs.count(),
     }, status=HTTP_200_OK)
+
 
 @api_view(['POST'])
 def add_product(request):
@@ -710,6 +768,7 @@ def add_product(request):
     return Response({
         'done!'
     }, status=HTTP_201_CREATED)
+
 
 
 @api_view(['POST'])
@@ -835,7 +894,76 @@ def add_class(request=None, custom_data=None,user=None):
     return Response({'done!'}, status=HTTP_201_CREATED)
 
 
+def add_class_fun(mytype,product_id,amount,is_available,class_id,user):
+    
+    try:
+        data =  {
+            'type': mytype if mytype else None,
+            # 'description': request.data.get('description') if request else None,
+            'product_id': product_id if product_id else None,
+            'amount': amount if amount else None,
+            'is_available': is_available if is_available else None,
+            'class_id': class_id if class_id else None,
+        }
+        print('here add_class_fun ')
+        print(data)
+        if not data['amount']:
+            data['amount']=0
+        # Ensure we have a valid user
+        if not data['type'] :
+            if not data['class_id']:
+                return Response({'error': 'Type field is required'}, status=HTTP_400_BAD_REQUEST)
+            class_obj=Class.objects.get(id=data['class_id'])
+            data['type']=class_obj.type
+        print(user)
+        print(1)
+        if not Product.objects.filter(id=data['product_id']).exists():
+            return Response({'error': 'There is no such Product'}, status=HTTP_400_BAD_REQUEST)
+        product = Product.objects.filter(id=data['product_id']).first()
+        print(2)
 
+        if not Class.objects.filter(product=product,type=data['type']).exists():
+            Class.objects.create(
+                product=product,
+                type=data['type']
+            )
+            default_user = User.objects.filter(groups__name="staff").first()
+
+        print(1.2)
+
+        print(1)
+        Class_object = Class.objects.get(type=data['type'], product=product)
+        print(1.5)
+        print(Class_object)
+        Class_object.active='Yes'
+        Class_object.save()
+        if Amounts.objects.filter(product_class=Class_object, is_available=data['is_available']).exists():
+            print(2)
+            amount_obj = Amounts.objects.filter(product_class=Class_object, is_available=data['is_available']).first()
+            amount_obj.amount += int(data['amount'])
+            amount_obj.save()
+        else:
+            print(3)
+            Amounts.objects.create(
+                amount=data['amount'],
+                is_available=data['is_available'],
+                product_class=Class_object
+            )
+
+        # Send notification and record transaction
+        default_user = User.objects.filter(groups__name="staff").first()
+        if data['is_available']=='متاح':
+            product.total_available += int(data['amount'])
+            product.save()
+        if data['is_available']=='قيد الوصول':
+            product.total_on_way += int(data['amount'])
+            product.save()
+
+        
+        return "done"
+    except Exception as e:
+        print("Error in add_class_fun:", str(e))
+        return str(e)
 
 
 @api_view(['POST'])
@@ -1016,7 +1144,7 @@ def reserve(request=None, custom_data=None, user=None):
             print('try')
             Notification.objects.create(
                 user=user,
-                message=f' لقد قمت بحجز {amountt} قطعة من المنتج {amount.product_class.type} '
+                message=f' لقد قام {request.user.username} بحجز {amountt} قطعة من المنتج {amount.product_class.type} '
             )
             return add_class(django_request, custom_data=data, user=request.user)
         elif amount.amount < int(data['amount']):
@@ -1025,12 +1153,75 @@ def reserve(request=None, custom_data=None, user=None):
     return Response({"error": "No matching reservation found"}, status=HTTP_404_NOT_FOUND)
 
 
+def reserve_fun(amount_id,amount,user):
+   
+
+    data =  {
+        'amount_id': amount_id ,
+        'amount': amount ,
+        'is_available': None,
+    }
+    print(data['amount'])
+    print(data['amount_id'])
+    amount = Amounts.objects.get(
+       id=data['amount_id']
+    )
+    class_obj = amount.product_class
+    name=class_obj.product.name
+    type=class_obj.type
+    print(1)
+    print(data)
+    print(amount)
+    amountt=data['amount']
+
+    if amount:
+        if amount.amount >= int(data['amount']):
+            print("user.username")
+
+            print(user)
+            default_user = User.objects.filter(groups__name="staff").first()
+
+            product = class_obj.product
+
+            product.total_available -= int(data['amount'])
+            product.save()
+
+
+           
+
+            Reservations.objects.create(
+                amount=data['amount'],
+                product_class=class_obj,
+                user=user,
+                reservation_type='pending',
+                workshop=Workshop.objects.get(id=data['workshop_id']) if 'workshop_id' in data else None
+
+            )
+
+            data['is_available'] ='محجوز'
+            amount.amount -= int(data['amount'])
+            amount.save()
+            data['product_id']=class_obj.product.id
+            data['type']=type
+
+            django_request = HttpRequest()
+            django_request.method = 'POST'
+            django_request.POST = data
+            print('try')
+            # add_class_fun(mytype,product_id,amount,is_available,class_id,user)
+            return add_class_fun(None,class_obj.product.id,int(data['amount']),'محجوز',class_obj.id,user)
+        elif amount.amount < int(data['amount']):
+            return Response({"error": "You have asked for more than what you have"}, status=HTTP_404_NOT_FOUND)
+
+    return Response({"error": "No matching reservation found"}, status=HTTP_404_NOT_FOUND)
+
+
+
 @api_view(['POST'])
 def cancle_reservation(request):
     data = {
 
         'Reservation_id': request.data.get('Reservation_id'),
-        'username': request.data.get('username'),
 
     }
     reservation=Reservations.objects.get(id=data['Reservation_id'])
@@ -1048,7 +1239,7 @@ def cancle_reservation(request):
         # product_class__type=data['type']
         product_class=class_obj,
     ).first()
-    user = User.objects.get(username=data['username'])
+    user = request.user
     # In your view, before you call `.first()`:
 
     # print("Params:", qs.query.params)
@@ -1057,12 +1248,8 @@ def cancle_reservation(request):
 
     amountt=data['amount']
 
-    print(user)
-    print(class_obj)
-    print(data['amount'])
-    print(1)
-    print(amount)
-    if reservation:
+    x=cancle_reservation_fun(reservation.id,request.user)
+    if x == 'done':
         user = request.user
         default_user = User.objects.filter(groups__name="staff").first()
 
@@ -1100,13 +1287,10 @@ def cancle_reservation(request):
             user=res_owner,
             message=f' لقد تم الغاء حجزك بكمية {amountt} قطعة من المنتج {amount.product_class.type} من قبل {staff_member.username} '
         )
-        reservation.reservation_type='cancelled'
-        reservation.save()
+        
         data['is_available'] = 'متاح'
-        amount.amount -= int(data['amount'])
-        amount.save()
+      
         prodict_obj=class_obj.product
-        print('kkkk ', int(data['amount']))
         
         django_request = HttpRequest()
         django_request.method = 'POST'
@@ -1114,10 +1298,66 @@ def cancle_reservation(request):
         print('try')
 
         return add_class(django_request, custom_data=data, user=request.user)
-    elif amount.amount < int(data['amount']):
-        return Response({"error": "You have asked for more than what you have"}, status=HTTP_404_NOT_FOUND)
+    else:
+        return Response({"error": x}, status=HTTP_404_NOT_FOUND)
 
     return Response({"error": "No matching reservation found"}, status=HTTP_404_NOT_FOUND)
+
+
+def cancle_reservation_fun(Reservation_id,user):
+    data = {
+
+        'Reservation_id': Reservation_id
+
+    }
+    print("here cancle_reservation_fun")
+    reservation=Reservations.objects.get(id=Reservation_id)
+    res_owner=reservation.user
+    class_obj = reservation.product_class
+    data['type']=class_obj.type
+    data['name']=class_obj.product.name
+    data['amount']=reservation.amount
+    data['product_id']=class_obj.product.id
+    print(reservation)
+    print(class_obj)
+    amount = Amounts.objects.filter(
+        is_available='محجوز',
+        # product_class__product__name=data['name'],
+        # product_class__type=data['type']
+        product_class=class_obj,
+    ).first()
+    
+    # In your view, before you call `.first()`:
+
+    # print("Params:", qs.query.params)
+
+
+
+    amountt=data['amount']
+
+    print(user)
+    print(class_obj)
+    print(data['amount'])
+    print(1)
+    print(amount)
+    if reservation:
+        
+        default_user = User.objects.filter(groups__name="staff").first()
+
+        
+       
+        reservation.reservation_type='cancelled'
+        reservation.save()
+        data['is_available'] = 'متاح'
+        amount.amount -= int(data['amount'])
+        amount.save()
+        prodict_obj=class_obj.product
+        print('add_class_fun ...')
+        return add_class_fun(None,data['product_id'],data['amount'],data['is_available'],class_obj.id,user)
+    elif amount.amount < int(data['amount']):
+        return  "some thing goes wrong"
+
+    return "No matching reservation found"
 
 
 @api_view(['POST'])
@@ -1225,6 +1465,7 @@ def confirm_reservation(request):
                     other_reservation.delete()
         
         reservation.reservation_type='delivered'
+        reservation.EndAt=timezone.now()
         reservation.save()
         return add_class(django_request, custom_data=data, user=request.user)
 
@@ -1308,7 +1549,7 @@ def send_reservation(request):
         )
         Notification.objects.create(
             user=request.user,
-            message=f' لقد قمت بارسال حجز بكمية {amountt} قطعة من المنتج {amount.product_class.type}  '
+            message=f' لقد قام {request.user.username}  بارسال حجز بكمية {amountt} قطعة من المنتج {amount.product_class.type}  '
         )
         reservation.reservation_type='sent'
         print('reservation.workshop')
@@ -1402,7 +1643,7 @@ def send_requested_reservation(request):
         )
         Notification.objects.create(
             user=request.user,
-            message=f' لقد قمت بارسال حجز بكمية {amountt} قطعة من المنتج {amount.product_class.type}  '
+            message=f' لقد قام {request.user.username}  بارسال حجز بكمية {amountt} قطعة من المنتج {amount.product_class.type}  '
         )
         reservation.reservation_type='sent'
         print('reservation.workshop')
@@ -1495,6 +1736,8 @@ def confirm_requested_reservation(request):
         else:
             pro_obj=Product.objects.filter(name=data['name'],reposotory=new_rep_obj).first()
         reservation.reservation_type='delivered'
+        reservation.workshop=None
+        reservation.EndAt=timezone.now()
         reservation.save()
         
         print('pro_obj')
@@ -1563,23 +1806,54 @@ def search_materials(request):
 @api_view(['GET'])
 def reposotory(request):
     is_manager = request.user.groups.filter(name="staff").exists()
+    is_store_keeper = request.user.groups.filter(name="StoreKeeper").exists()
     user =request.user
 
-    if   request.user.groups.filter(name="WorkShopManagers").exists():
+    if is_manager or is_store_keeper:
         repositories=Reposotory.objects.filter(is_working='Yes').exclude(name='الورشات')
-    elif is_manager:
-        repositories=Reposotory.objects.filter(is_working='Yes').exclude(name='الورشات')
+    
+    elif   request.user.groups.filter(name="WorkShopManagers").exists():
+        # repositories=Reposotory.objects.filter(is_working='Yes').exclude(name='الورشات')
+        repositories = user.allowed_repositories.filter(is_working='Yes').exclude(name='الورشات')
+
     elif  Reposotory.objects.filter(is_working='Yes',name=request.user.store.name).exists():
         repositories = user.allowed_repositories.filter(is_working='Yes').exclude(Q(name=request.user.store.name)|Q(name='الورشات'))
     else:
         repositories = user.allowed_repositories.filter(is_working='Yes').exclude(name='الورشات')
 
     serializer=ReposotorySerializer(repositories,many=True)
-    print('reposotory')
+    print('herrrrrrr reposotory')
+    print(repositories.count())
     return Response({
         'reposotories': serializer.data
 
     })
+
+
+
+@api_view(['GET'])
+def reposotory_for_showing(request):
+    is_manager = request.user.groups.filter(name="staff").exists()
+    is_store_keeper = request.user.groups.filter(name="StoreKeeper").exists()
+    user =request.user
+
+    
+    if   request.user.groups.filter(name="WorkShopManagers").exists():
+        # repositories=Reposotory.objects.filter(is_working='Yes').exclude(name='الورشات')
+        repositories = user.allowed_repositories.filter(is_working='Yes').exclude(name='الورشات')
+
+    else :
+        repositories=Reposotory.objects.filter(is_working='Yes').exclude(name='الورشات')
+    
+    
+    serializer=ReposotorySerializer(repositories,many=True)
+    
+    
+    return Response({
+        'reposotories': serializer.data
+
+    })
+
 
 
 @api_view(['POST'])
@@ -1630,26 +1904,53 @@ def turnResevation(request):
     data={
         'reservation_id':request.data.get('reservation_id'),
          'new_username':request.data.get('new_username'),
+         'new_workshop_name':request.data.get('new_workshop_name'),
     }
+
+    print('turnResevation')
+    print('data:', data)
     print(data['reservation_id'])
     print(data['new_username'])
-    reservauion=Reservations.objects.get(id=data['reservation_id'])
-    new_user=User.objects.get(username=data['new_username'])
-    if reservauion and new_user :
-
-
-        reservauion.newOwner=new_user
-        reservauion.save()
-        Notification.objects.create(
-            user=request.user,
-            message=f' لقد قمت بتحويل حجزك من المنتج {reservauion.product_class.type} الى {new_user.username} '
-        )
-        Notification.objects.create(
-            user=new_user,
-            message=f' لقد قام {request.user.username} بتحويل حجزه اليك من المنتج {reservauion.product_class.type}  '
-        )
+    if  data['reservation_id']:
+        
+        reservauion=Reservations.objects.get(id=data['reservation_id'])
     else:
         return Response ({'error':'you did not enter the informations properly'})
+    if data['new_workshop_name']:
+        print('new_workshop_name:', data['new_workshop_name'])
+        print('reservation workshop:', reservauion.workshop.name)
+        if  data['new_workshop_name'] == reservauion.workshop.name:
+            print('same workshop,the error has been araised')
+            return Response ({'error':'هذا الحجز موجود بالفعل في هذه الورشة'},status=status.HTTP_400_BAD_REQUEST)
+    
+    if data['new_username']:
+        user=User.objects.get(username=data['new_username'])
+        if  user.store == reservauion.user.store:
+            return Response ({'error':'الحجز موجود بالفعل في متجر هذا المستخدم'},status=status.HTTP_400_BAD_REQUEST)        
+        
+    if data['new_workshop_name']:
+        new_workshop=Workshop.objects.get(name=data['new_workshop_name'])
+        reservauion.workshop=new_workshop
+        new_user=new_workshop.manager
+        reservauion.save()
+    elif data['new_username']:
+        new_user=User.objects.get(username=data['new_username'])
+    else :
+        return Response ({'error':'you did not enter the informations properly'})
+
+     
+
+    reservauion.newOwner=new_user
+    reservauion.save()
+    Notification.objects.create(
+        user=request.user,
+        message=f' لقد قام {request.user.username}  بتحويل حجزك من المنتج {reservauion.product_class.type} الى {new_user.username} '
+    )
+    Notification.objects.create(
+        user=new_user,
+        message=f' لقد قام {request.user.username} بتحويل حجزه اليك من المنتج {reservauion.product_class.type}  '
+    )
+    
     return Response({'details': 'the proceed went successfully'})
 
 
@@ -1673,7 +1974,7 @@ def confirmTurnResevation(request):
         )
         Notification.objects.create(
             user=request.user,
-            message=f' لقد قمت بتاكيد استلام تحويل حجز {old_user.username} من المنتج {reservauion.product_class.type} اليك '
+            message=f' لقد قام {request.user.username}  بتاكيد استلام تحويل حجز {old_user.username} من المنتج {reservauion.product_class.type} اليك '
         )
     else:
         return Response({'error': 'you did not enter the informations properly'})
@@ -1696,7 +1997,7 @@ def cancelTurnResevation(request):
         )
         Notification.objects.create(
             user=request.user,
-            message=f' لقد قمت بالغاء تحويل حجز {old_user.username} من المنتج {reservauion.product_class.type} اليك '
+            message=f' لقد قام {request.user.username}  بالغاء تحويل حجز {old_user.username} من المنتج {reservauion.product_class.type} اليك '
         )
     else:
         return Response({'error': 'you did not enter the informations properly'})
@@ -1704,63 +2005,64 @@ def cancelTurnResevation(request):
 
 
 
-@api_view(['POST'])
-def sell(request):
-    data =  {
-        'amount_id': request.data.get('amount_id') ,
-        'amount': request.data.get('amount') ,
-        'is_available': None,
-    }
-    print('afdassddsad')
-    print(data['amount'])
-    print(data['amount_id'])
-    amount = Amounts.objects.get(
-       id=data['amount_id']
-    )
-    class_obj = amount.product_class
-    name=class_obj.product.name
-    type=class_obj.type
-    print(1)
-    print(data)
-    print(amount)
-    amountt=data['amount']
-
-    if amount:
-        if amount.amount >= int(data['amount']):
-            user = request.user
-            product = class_obj.product
-
-            product.total_available -= int(data['amount'])
-            product.save()
-
-            data['is_available'] ='محجوز'
-            amount.amount -= int(data['amount'])
-            amount.save()
-            Notification.objects.create(
-                user=request.user,
-                message=f' لقد قمت ببيع {amountt} قطعة من المنتج {amount.product_class.type} '
-            )
-            return Response({"details:": "done!"}, status=HTTP_200_OK)
-        elif amount.amount < int(data['amount']):
-            return Response({"error": "You have asked for more than what you have"}, status=HTTP_404_NOT_FOUND)
-
-    return Response({"error": "No matching reservation found"}, status=HTTP_404_NOT_FOUND)
-
-
 
 @api_view(['GET'])
 def workshops(request):
     is_manager = request.user.groups.filter(name="staff").exists()
     if is_manager:
-        workshops=Workshop.objects.all().exclude(is_working='stopped')
+        workshops=Workshop.objects.all().exclude(Q(is_working='stopped')|Q(is_working='done')).order_by('-id')
     else:
-        workshops=Workshop.objects.filter(Q(is_working='Yes')|Q(is_working='not started yet'),Q(manager=request.user)|Q(manager=None)).exclude(is_working='stopped')
+        workshops=Workshop.objects.filter(Q(is_working='Yes')|Q(is_working='not started yet'),Q(manager=request.user)|Q(manager=None)).exclude(is_working='stopped').order_by('-id')
 
     serializer=WorkshopSerializer(workshops,many=True)
     return Response({
         'workshops': serializer.data
 
     })
+
+
+
+
+@api_view(['GET'])
+def workshops_has_manager(request):
+    
+    workshops=Workshop.objects.filter(is_working='Yes',manager__isnull=False)
+
+    serializer=WorkshopSerializer(workshops,many=True)
+    return Response({
+        'workshops': serializer.data
+
+    })
+
+
+@api_view(['GET'])
+def turn_Reservation_to_workshops(request):
+   
+    workshops=Workshop.objects.all().exclude(Q(is_working='stopped')|Q(is_working='done'))
+   
+    serializer=WorkshopSerializer(workshops,many=True)
+    return Response({
+        'workshops': serializer.data
+
+    })
+
+
+@api_view(['GET'])
+def ended_workshops(request):
+    is_manager = request.user.groups.filter(name="staff").exists()
+    if is_manager:
+        workshops=Workshop.objects.filter(is_working='done').exclude(is_working='stopped').order_by('-EndAt')
+    else:
+        workshops=Workshop.objects.filter(is_working='done',manager=request.user).exclude(is_working='stopped').order_by('-EndAt')
+
+    serializer=WorkshopSerializer(workshops,many=True)
+    return Response({
+        'workshops': serializer.data
+
+    })
+
+
+
 
 
 @api_view(['POST'])
@@ -1793,7 +2095,7 @@ def WorkshopToggleStatusView(request):
             users = User.objects.all()
             Notification.objects.create(
                     user=request.user,
-                    message=f' لقد قمت بتعطيل الورشة {workshop.name} '
+                    message=f' لقد قام {request.user.username}  بتعطيل الورشة {workshop.name} '
                 )
             return Response({'message': 'تم تعطيل الورشة بنجاح'}, status=status.HTTP_200_OK)
         except Reposotory.DoesNotExist:
@@ -1887,13 +2189,15 @@ def addClassToWorkshop(request):
             data['type']=type
             print('try2')
             print(data['type'])
+            workshop_obj.is_working='Yes'
+            workshop_obj.save()
             django_request = HttpRequest()
             django_request.method = 'POST'
             django_request.POST = data
             print('try')
             Notification.objects.create(
                 user=user,
-                message=f' لقد قمت بحجز {amount} قطعة من المنتج {amount_obj.product_class.type} '
+                message=f' لقد قام {request.user.username}  بحجز {amount} قطعة من المنتج {amount_obj.product_class.type} '
             )
             print('done!')
             return add_class(django_request, custom_data=data, user=request.user)
@@ -1968,7 +2272,7 @@ def addClassToWorkshop(request):
             print(class_obj)
             Notification.objects.create(
                 user=user,
-                message=f' لقد قمت بحجز {amount_obj.amount} قطعة وطلب لشراء {amount-amount_obj.amount} من المنتج {amount_obj.product_class.type} '
+                message=f' لقد قام {request.user.username}  بحجز {amount_obj.amount} قطعة وطلب لشراء {amount-amount_obj.amount} من المنتج {amount_obj.product_class.type} '
             )
             print("asked amount ",amount-amount_obj.amount)
             print("reserved amount ",amount_obj.amount)
@@ -1999,7 +2303,9 @@ def addClassToWorkshop(request):
                     is_available='مطلوب للشراء',
                     product_class=class_obj
                 )
-          
+            print('here it comes')    
+            workshop_obj.is_working='Yes'
+            workshop_obj.save()
             class_obj.product.total_requested += int(data['amount'])-amount_obj.amount
             class_obj.product.save()
             print( amount_obj.amount)
@@ -2009,6 +2315,148 @@ def addClassToWorkshop(request):
     except Exception as e:
         return Response({'error':str(e)},status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
+
+def addClassToWorkshop_fun(workshop_id,class_id,amount,reposotory_id,user):
+    data = {
+        'workshop_id':workshop_id,
+        'class_id': class_id,
+        'amount': amount,
+        'reposotory_id': reposotory_id,
+    }
+    try:
+        print('addClassToWorkshop')
+        print('data',data)
+        reposotory=Reposotory.objects.get(id=data['reposotory_id'])
+        print('reposotory',reposotory)
+        workshop_obj=Workshop.objects.get(id=data['workshop_id'])
+        print('workshop_obj',workshop_obj)
+        class_obj=Class.objects.get(id=data['class_id'])
+        print('class_obj',class_obj)
+        name=class_obj.product.name
+        type=class_obj.type
+        if data['amount'] is None:
+            return Response({'error':'data you entered is not enough'})
+        if class_obj.product.reposotory !=reposotory:
+            return Response ({'error':'المنتج الذي طلبته موجود في المستودع الاخر'},status=HTTP_404_NOT_FOUND)
+       
+        amount=int(data['amount'])
+    except Exception as e:
+        return Response({'error':'data you entered is not enough'})
+    try:    
+        amount_obj=Amounts.objects.filter(is_available='متاح',product_class=class_obj).first()
+
+        print('amount_obj',amount_obj)
+        print(data['amount'])
+        
+        
+        if amount_obj.amount >= int(data['amount']):
+            print("user.username")
+            print(user)
+            default_user = User.objects.filter(groups__name="staff").first()
+            print(1)
+
+            product = class_obj.product
+            product.total_available -= amount
+            product.save()
+            
+            print(2)
+            Reservations.objects.create(
+                amount=data['amount'],
+                product_class=class_obj,
+                user=user,
+                reservation_type='pending',
+                workshop=Workshop.objects.get(id=data['workshop_id']) if 'workshop_id' in data else None
+            )
+            print(3)
+            data['is_available'] ='محجوز'
+            amount_obj.amount -= amount
+            amount_obj.save()
+            data['product_id']=class_obj.product.id
+            data['type']=type
+            print('try2')
+            print(data['type'])
+            workshop_obj.is_working='Yes'
+            workshop_obj.save()
+            print('try')
+            Notification.objects.create(
+                user=user,
+                message=f' لقد قام {user.username}  بحجز {amount} قطعة من المنتج {amount_obj.product_class.type} '
+            )
+            print('done!')
+            return add_class_fun('',class_obj.product.id,int(data['amount']),'محجوز',class_obj.id,user)
+        elif amount_obj.amount < int(data['amount']):
+            
+            print("user.username")
+            print(user)
+            default_user = User.objects.filter(groups__name="staff").first()
+            product = class_obj.product
+            product.total_available -= amount_obj.amount
+            product.save()
+            
+           
+            if amount_obj.amount>0 :    
+                Reservations.objects.create(
+                amount=amount_obj.amount,
+                product_class=class_obj,
+                user=user,
+                reservation_type='pending',
+                workshop=Workshop.objects.get(id=data['workshop_id']) if 'workshop_id' in data else None
+                )
+            Reservations.objects.create(
+                amount=int(data['amount'])-amount_obj.amount,
+                product_class=class_obj,
+                user=user,
+                reservation_type='requested for workshops',
+                workshop=Workshop.objects.get(id=data['workshop_id']) if 'workshop_id' in data else None
+            )
+           
+            data['product_id']=class_obj.product.id
+            data['type']=type
+           
+            print('try1')
+            print(class_obj)
+            
+            print("asked amount ",amount-amount_obj.amount)
+            print("reserved amount ",amount_obj.amount)
+
+            if Amounts.objects.filter(product_class=class_obj, is_available='محجوز').exists():
+                print('محجوز',2)
+                amount_obj2 = Amounts.objects.filter(product_class=class_obj, is_available='محجوز').first()
+                amount_obj2.amount += amount_obj.amount
+                amount_obj2.save()
+            else:
+                print('محجوز',3)
+                Amounts.objects.create(
+                    amount=amount_obj.amount,
+                    is_available='محجوز',
+                    product_class=class_obj
+                )
+
+            if Amounts.objects.filter(product_class=class_obj, is_available='مطلوب للشراء').exists():
+                print('مطلوب للشراء',2)
+                amount_obj3 = Amounts.objects.filter(product_class=class_obj, is_available='مطلوب للشراء').first()
+                amount_obj3.amount +=int(data['amount'])-amount_obj.amount
+                amount_obj3.save()
+            else:
+                print('مطلوب للشراء',3)
+                
+                Amounts.objects.create(
+                    amount=int(data['amount'])-amount_obj.amount,
+                    is_available='مطلوب للشراء',
+                    product_class=class_obj
+                )
+
+            workshop_obj.is_working='Yes'
+            workshop_obj.save()
+            class_obj.product.total_requested += int(data['amount'])-amount_obj.amount
+            class_obj.product.save()
+            print( amount_obj.amount)
+            amount_obj.amount=0
+            amount_obj.save()
+            return 'done'
+    except Exception as e:
+        return str(e)
+  
 
 @api_view(['POST'])
 def Assign_manager_Workshop(request):
@@ -2059,7 +2507,7 @@ def Workshop_details(request):
 
 
 @api_view(['GET'])
-def reposotories_for_workshop(workshop):
+def reposotories_for_workshop(request):
 
     print('hiwsad')
     reposotories_for_workshop=Reposotory.objects.filter(name__in=['الرئيسي','المرجة'])
@@ -2090,6 +2538,7 @@ def end_workshop(request):
         if not reservations:
             return Response({'error':'لا يمكنك انهاء الورشة , لا يوجد بها اي حجز  '}, status=status.HTTP_400_BAD_REQUEST )
         workshop_obj.is_working='done'
+        workshop_obj.EndAt=timezone.now()
         workshop_obj.save()
         users = User.objects.all()
         for curuser in users:
@@ -2102,6 +2551,7 @@ def end_workshop(request):
 
     return Response({'details:': 'your request has been proceed succefully!'})
 
+
 @api_view(['POST'])    
 def unused_amount(request):
 
@@ -2109,27 +2559,69 @@ def unused_amount(request):
         'reservation_id': request.data.get('reservation_id'),
         'amount': request.data.get('amount'),
         'reposotory_id': request.data.get('reposotory_id'),
+        'workshop_id': request.data.get('workshop_id'),
         }
     try:
+        print('data',data)
         reservation=Reservations.objects.get(id=data['reservation_id'])
-        reposotorie=Reposotory.objects.get(id=data['reposotory_id'])
+        if data['reposotory_id'] :
+            reposotorie=Reposotory.objects.get(id=data['reposotory_id'])
+        else :
+            reposotorie=None
+        
+        if data['workshop_id'] :
+            workshop=Workshop.objects.get(id=data['workshop_id'])
+            if workshop == reservation.workshop:
+                return Response({'error':'الورشة التي ادخلتها هي نفس الورشة الموجودة في الحجز '}, status=status.HTTP_400_BAD_REQUEST )
+        else: 
+            workshop=None
+
+            
 
         if int(data['amount'])> reservation.amount:
             return Response({'error':'الكمية التي ادخلتها اكبر من الكمية المستخدمة في الورشة '}, status=status.HTTP_400_BAD_REQUEST )
         reservation.used_in_workshop=int(data['amount'])
         reservation.save()
-        Notification.objects.create(
-                user=request.user,
-                message=f' لقد قمت بارجاع {reservation.amount-data["amount"]} قطعة من المنتج {reservation.product_class.type} الى المستودع {reposotorie.name}  '
-            )
-        users=User.objects.filter(store__name=reposotorie.name)  
-        for curuser in users:
+        if data['reposotory_id'] :
             Notification.objects.create(
+                user=request.user,
+                message=f' لقد قام {request.user.username}  بارجاع {reservation.amount-data["amount"]} قطعة من المنتج {reservation.product_class.type} الى المستودع {reposotorie.name}  '
+            )
+        elif data['workshop_id'] and not data['reposotory_id'] :
+            Notification.objects.create(
+                user=request.user,
+                message=f' لقد قام {request.user.username}  بارجاع {reservation.amount-data["amount"]} قطعة من المنتج {reservation.product_class.type} الى  الورشة {workshop.name}  '
+            )
+
+        if data['reposotory_id'] :
+            users=User.objects.filter(store__name=reposotorie.name)  
+            for curuser in users:
+                Notification.objects.create(
                 user=curuser,
                 message=f' لقد تم ارجاع {reservation.amount-data["amount"]} قطعة من المنتج {reservation.product_class.type} من الورشة {reservation.workshop.name} الى مستودعك  '
-            )  
-        rep_user=User.objects.filter(store__name=reposotorie.name).exclude(is_active=False).first()    
-        Add_Delete.objects.create(
+                ) 
+
+        else :
+            #was turned to workshop :
+            user=workshop.manager
+            Notification.objects.create(
+                user=user,
+                message=f' لقد تم ارجاع {reservation.amount-data["amount"]} قطعة من المنتج {reservation.product_class.type} من الورشة {reservation.workshop.name} الى ورشتك  '
+            ) 
+
+            
+       
+        
+
+        if data['reposotory_id'] :
+
+            if  User.objects.filter(store__name=reposotorie.name).exclude(is_active=False).exists() :
+                rep_user=User.objects.filter(store__name=reposotorie.name).exclude(is_active=False).first()   
+            
+            else :
+                rep_user=User.objects.filter(groups__name='boss').first()
+
+            Add_Delete.objects.create(
                 changer=request.user ,
                 change_type='ارسال',
                 name=reservation.product_class.product.name,
@@ -2137,33 +2629,86 @@ def unused_amount(request):
                 type=reservation.product_class.type,
                 reader=rep_user ,
                 details=f'كمية زائدة عن ورشة {reservation.workshop.name} تم ارسالها الى المستودع  {reposotorie.name}'
-            )     
+            ) 
 
-        Reservations.objects.create(
+
+        elif data['workshop_id'] and not data['reposotory_id'] and workshop.manager :
+            rep_user=workshop.manager
+            
+            Add_Delete.objects.create(
+                changer=request.user ,
+                change_type='ارسال',
+                name=reservation.product_class.product.name,
+                amount=reservation.amount-int(data['amount']),
+                type=reservation.product_class.type,
+                reader=rep_user ,
+                details=f'كمية زائدة عن ورشة {reservation.workshop.name} تم ارسالها الى الورشة  {workshop.name}'
+            )   
+            
+
+            
+            
+
+     
+        if data['reposotory_id'] :
+            Reservations.objects.create(
                 amount=reservation.amount - int(data['amount']),
                 product_class=reservation.product_class,
                 user=rep_user,
                 reservation_type='returned from workshops',
                 workshop=reservation.workshop
             )
-        if   Reservations.objects.filter(
+        elif data['workshop_id'] and not data['reposotory_id'] :
+            Reservations.objects.create(
+                amount=reservation.amount - int(data['amount']),
+                product_class=reservation.product_class,
+                user=rep_user,
+                reservation_type='sent',
+                workshop=workshop
+            )    
+
+
+        if data['reposotory_id'] :
+            if   Reservations.objects.filter(
                 product_class=reservation.product_class,
                 reservation_type='delivered',
                 workshop=reservation.workshop,
-                used_in_workshop__gt=0
+                used_in_workshop__gte=0
                 ).exclude(id=data['reservation_id']).exists():
                     print('here if')
                     other_reservation=Reservations.objects.filter(
                         product_class=reservation.product_class,
                         reservation_type='delivered',
                         workshop=reservation.workshop,
-                        used_in_workshop__gt=0
+                        used_in_workshop__gte=0
 
                         ).exclude(id=data['reservation_id']).first()
+                    
                     reservation.amount+=other_reservation.amount
                     reservation.used_in_workshop+=other_reservation.used_in_workshop
                     reservation.save()
                     other_reservation.delete()
+        elif data['workshop_id'] and not data['reposotory_id'] :
+            if   Reservations.objects.filter(
+                product_class=reservation.product_class,
+                reservation_type='delivered',
+                workshop=workshop,
+                used_in_workshop__gte=0
+                ).exclude(id=data['reservation_id']).exists():
+                    print('here if')
+                    other_reservation=Reservations.objects.filter(
+                        product_class=reservation.product_class,
+                        reservation_type='delivered',
+                        workshop=workshop,
+                        used_in_workshop__gte=0
+
+                        ).exclude(id=data['reservation_id']).first()
+                    
+                    reservation.amount+=other_reservation.amount
+                    reservation.used_in_workshop+=other_reservation.used_in_workshop
+                    reservation.save()
+                    other_reservation.delete()
+
         return Response({'details:': 'your request has been proceed succefully!'})
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR )
@@ -2181,4 +2726,466 @@ def user_allowed_repositories(request, user_id):
             'allowed_repositories': [repo.id for repo in repositories]
         })
     except CustomUser.DoesNotExist:
-        return Response({'error': 'User not found'}, status=404)        
+        return Response({'error': 'User not found'}, status=404)       
+
+
+@api_view(['POST'])
+def edit_amount_in_reservation(request):
+    data={
+        'reservation_id':request.data.get('reservation_id'),
+        'new_amount':request.data.get('new_amount'), 
+        } 
+    
+    try:
+
+        print('data',data)
+        reservation=Reservations.objects.get(id=data['reservation_id']) 
+        new_amount=data['new_amount']
+        
+        # return Response({'details:': 'your request has been proceed succefully!'}) 
+    except Exception as e: return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR )
+    if new_amount > reservation.amount:
+        amount_to_add = new_amount - reservation.amount
+        if reservation.workshop :
+            try:
+                class_obj=reservation.product_class
+                product=class_obj.product
+                available_amount=Amounts.objects.filter(product_class=class_obj,is_available='متاح').first()    
+                reserved_amount=Amounts.objects.filter(product_class=class_obj,is_available='محجوز').first()   
+                print('here x',)
+                x=cancle_reservation_fun(reservation.id,request.user)
+                if x=='done' :
+                    y=addClassToWorkshop_fun(reservation.workshop.id ,class_obj.id,new_amount,reservation.product_class.product.reposotory.id,request.user)                # add_class_fun(mytype,product_id,amount,is_available,class_id,user)
+                    if y=='done' :
+                        Reservations.objects.get(id=reservation.id).delete() 
+      
+                        Notification.objects.create(
+                            user=request.user,
+                            message=f' لقد قام {request.user.username}  بزيادة كمية الحجز من المنتج {reservation.product_class.type} الى {new_amount}  '
+                        )
+                        return Response({'details:': 'your request has been proceed succefully!'}) 
+                    else :
+                        print('error in addClassToWorkshop_fun ',y)
+                        return Response({'error': y}, status=status.HTTP_500_INTERNAL_SERVER_ERROR )
+                else :
+                    print('error in cancle_reservation_fun ',x)
+                    return Response({'error': x}, status=status.HTTP_500_INTERNAL_SERVER_ERROR )
+
+                
+            except Exception as e: return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR )
+        else :
+
+            class_obj=reservation.product_class
+            product=class_obj.product
+            available_amount=Amounts.objects.filter(product_class=class_obj,is_available='متاح').first()    
+            reserved_amount=Amounts.objects.filter(product_class=class_obj,is_available='محجوز').first()   
+            if amount_to_add > available_amount.amount:
+                return Response({'error': 'لا يوجد لديك ما يكفي من المواد في المستودع'}, status=status.HTTP_400_BAD_REQUEST) 
+            else:
+                try:
+                    
+                    print('here x',)
+                    x=cancle_reservation_fun(reservation.id,request.user)
+                    if x=='done' :
+                        y=reserve_fun(available_amount.id,new_amount,request.user)                # add_class_fun(mytype,product_id,amount,is_available,class_id,user)
+                        if y=='done' :
+                            Reservations.objects.get(id=reservation.id).delete() 
+
+                            Notification.objects.create(
+                                user=request.user,
+                                message=f' لقد قام {request.user.username}  بزيادة كمية الحجز من المنتج {reservation.product_class.type} الى {new_amount}  '
+                            )
+                            return Response({'details:': 'your request has been proceed succefully!'}) 
+                        else :
+                            print('error in addClassToWorkshop_fun ',y)
+                            return Response({'error': y}, status=status.HTTP_500_INTERNAL_SERVER_ERROR )
+                    else :
+                        print('error in cancle_reservation_fun ',x)
+                        return Response({'error': x}, status=status.HTTP_500_INTERNAL_SERVER_ERROR )
+
+                
+                except Exception as e: return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR )
+        
+
+    elif  new_amount == reservation.amount:
+        return Response({'error': 'لقد ادخلت نفس الكمية'}, status=status.HTTP_400_BAD_REQUEST) 
+
+    else:    
+        amount_to_remove = reservation.amount - new_amount
+
+        # try:
+            # class_obj=reservation.product_class
+            # product=class_obj.product
+            # available_amount=Amounts.objects.filter(product_class=class_obj,is_available='متاح').first()    
+            # reserved_amount=Amounts.objects.filter(product_class=class_obj,is_available='محجوز').first()        
+
+            # product.total_available += amount_to_remove
+            # product.save()
+
+            # reserved_amount.amount -= amount_to_remove
+            # reserved_amount.save()
+            # available_amount.amount += amount_to_remove
+            # available_amount.save()
+            # reservation.amount=new_amount
+            # reservation.save()
+        if reservation.workshop :
+            try:
+                class_obj=reservation.product_class
+                product=class_obj.product
+                available_amount=Amounts.objects.filter(product_class=class_obj,is_available='متاح').first()    
+                reserved_amount=Amounts.objects.filter(product_class=class_obj,is_available='محجوز').first()   
+                print('here x',)
+                x=cancle_reservation_fun(reservation.id,request.user)
+                if x=='done' :
+                    y=addClassToWorkshop_fun(reservation.workshop.id ,class_obj.id,new_amount,reservation.product_class.product.reposotory.id,request.user)                # add_class_fun(mytype,product_id,amount,is_available,class_id,user)
+                    if y=='done' :
+                        Reservations.objects.get(id=reservation.id).delete() 
+      
+                        Notification.objects.create(
+                            user=request.user,
+                            message=f' لقد قام {request.user.username}  بانقاص كمية الحجز من المنتج {reservation.product_class.type} الى {new_amount}  '
+                        )
+                        return Response({'details:': 'your request has been proceed succefully!'}) 
+                    else :
+                        print('error in addClassToWorkshop_fun ',y)
+                        return Response({'error': y}, status=status.HTTP_500_INTERNAL_SERVER_ERROR )
+                else :
+                    print('error in cancle_reservation_fun ',x)
+                    return Response({'error': x}, status=status.HTTP_500_INTERNAL_SERVER_ERROR )
+
+                
+            except Exception as e: return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR )
+        else :
+
+            class_obj=reservation.product_class
+            product=class_obj.product
+            available_amount=Amounts.objects.filter(product_class=class_obj,is_available='متاح').first()    
+            resrved_amount=Amounts.objects.filter(product_class=class_obj,is_available='محجوز').first()   
+            try:
+                
+                print('here x',)
+                x=cancle_reservation_fun(reservation.id,request.user)
+                if x=='done' :
+                    y=reserve_fun(available_amount.id,new_amount,request.user)                # add_class_fun(mytype,product_id,amount,is_available,class_id,user)
+                    if y=='done' :
+                        Reservations.objects.get(id=reservation.id).delete() 
+                        Notification.objects.create(
+                            user=request.user,
+                            message=f' لقد قام {request.user.username}  بانقاص كمية الحجز من المنتج {reservation.product_class.type} الى {new_amount}  '
+                        )
+                        return Response({'details:': 'your request has been proceed succefully!'}) 
+                    else :
+                        print('error in addClassToWorkshop_fun ',y)
+                        return Response({'error': y}, status=status.HTTP_500_INTERNAL_SERVER_ERROR )
+                else :
+                    print('error in cancle_reservation_fun ',x)
+                    return Response({'error': x}, status=status.HTTP_500_INTERNAL_SERVER_ERROR )
+            
+            except Exception as e: return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR )
+        
+        
+    
+@api_view(['GET'])
+def bills(request):
+    is_manager = request.user.groups.filter(name="staff").exists()
+      
+    if is_manager:
+        bills=Bill.objects.all().exclude(Q(is_working='stopped')|Q(is_working='done')).order_by('-createAt')
+    else:
+        bills=Bill.objects.filter(Q(is_working='Yes')|Q(is_working='not started yet'),Q(seller=request.user)|Q(seller=None)).exclude(is_working='stopped').order_by('-createAt')
+
+    serializer=BillsSerializer(bills,many=True)
+    print('serializer.data',serializer.data)
+    return Response({
+        'bills': serializer.data
+
+    })
+
+
+
+
+
+@api_view(['GET'])
+def ended_bills(request):
+    print('hi ended bills')
+    is_manager = request.user.groups.filter(name="staff").exists()
+    if is_manager:
+        bills=Bill.objects.filter(is_working='done').order_by('-EndAt')
+    else:
+        bills=Bill.objects.filter(is_working='done',seller=request.user).order_by('-EndAt')
+
+    serializer=BillsSerializer(bills,many=True)
+    return Response({
+        'ended_bills': serializer.data
+
+    })
+
+
+
+
+@api_view(['POST'])
+def sell(request):
+    data =  {
+        'amount_id': request.data.get('amount_id') ,
+        'amount': request.data.get('amount') ,
+        'is_available': None,
+        'bill_id':request.data.get('bill_id') 
+    }
+    user=request.user
+    print('selling data',data)
+    print(data['amount'])
+    print(data['amount_id'])
+    amount = Amounts.objects.get(
+       id=data['amount_id']
+    )
+    bill_obj = Bill.objects.get(id=data['bill_id'])
+    class_obj = amount.product_class
+    name=class_obj.product.name
+    type=class_obj.type
+    print(1)
+    print(data)
+    print(amount)
+    amountt=data['amount']
+
+    if amount:
+        if amount.amount >= int(data['amount']):
+            user = request.user
+            product = class_obj.product
+
+            product.total_available -= int(data['amount'])
+            product.save()
+
+            data['is_available'] ='محجوز'
+            amount.amount -= int(data['amount'])
+            amount.save()
+            Reservation.objects.create(
+                user=request.user,
+                product_class=class_obj,
+                amount=data['amount'],
+                reservation_type='sold',
+                bill=bill_obj
+            )
+            Notification.objects.create(
+                user=request.user,
+                message=f' لقد قام {request.user.username}  باضافة كمية {amountt} قطعة من المنتج {amount.product_class.type} الى فاتورة {bill_obj.client_name}  '
+            )
+            return Response({"details:": "done!"}, status=HTTP_200_OK)
+        elif amount.amount < int(data['amount']):
+            return Response({"error": "You have asked for more than what you have"}, status=HTTP_404_NOT_FOUND)
+
+    return Response({"error": "No matching reservation found"}, status=HTTP_404_NOT_FOUND)
+
+
+
+@api_view(['GET'])
+def bill_details(request):
+    data = {
+        'bill_id':request.GET.get('bill_id'),
+
+    }
+    try:
+        print('hiiii , bill_details')
+        print('bill_id',data['bill_id'])
+        bill_obj=Bill.objects.get(id=data['bill_id'])
+        reservations=Reservations.objects.filter(bill=bill_obj,).order_by('createAt')
+        serializer=ReservationsSerializer(reservations,many=True,context={'request': request})
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR )
+    return Response({
+        'reservations': serializer.data
+
+    })
+
+
+
+@api_view(['POST'])    
+def end_bill(request):
+
+    data = {
+        'bill_id':request.data.get('bill_id'),
+
+    }
+    try:
+
+        bill_obj=Bill.objects.get(id=data['bill_id'])
+        bill_obj.is_working='done'
+        bill_obj.EndAt=timezone.now()
+        bill_obj.save()
+       
+        Notification.objects.create(
+            user=bill_obj.seller,
+            message=f' لقد تم اغلاق الفاتورة {bill_obj.client_name} '
+        )
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR )
+
+    return Response({'details:': 'your request has been proceed succefully!'})
+
+
+
+
+@api_view(['POST'])
+def addBill(request):
+    data = {
+        'details': request.data.get('details'),
+        'client_name': request.data.get('client_name'),
+    }
+    try:
+        Bill.objects.create(
+            client_name=data['client_name'],
+            details=data['details'],
+            seller=request.user
+        )
+    except Exception as e:
+        return Response({'error':'data you entered is not enough'})
+
+    return Response({'details:': 'your request has been proceed succefully!'})
+
+
+
+@api_view(['POST'])
+def addClassToBill(request):
+    data = {
+        'Bill_id':request.data.get('Bill_id'),
+        'class_id': request.data.get('class_id'),
+        'amount': request.data.get('amount'),
+        'reposotory_id': request.data.get('reposotory_id'),
+    }
+    try:
+        print('addClassToBill')
+        print('data',data)
+        reposotory=Reposotory.objects.get(id=data['reposotory_id'])
+        print('reposotory',reposotory)
+        bill_obj=Bill.objects.get(id=data['Bill_id'])
+        print('bill_obj',bill_obj)
+        class_obj=Class.objects.get(id=data['class_id'])
+        print('class_obj',class_obj)
+        name=class_obj.product.name
+        type=class_obj.type
+        if data['amount'] is None:
+            return Response({'error':'data you entered is not enough'})
+        if class_obj.product.reposotory !=reposotory:
+            return Response ({'error':'المنتج الذي طلبته موجود في مستودع اخر'},status=HTTP_404_NOT_FOUND)
+       
+        amount=int(data['amount'])
+    except Exception as e:
+        return Response({'error':'data you entered is not enough'})
+    try:    
+        amount_obj=Amounts.objects.filter(is_available='متاح',product_class=class_obj).first()
+
+        print('amount_obj',amount_obj)
+        print(data['amount'])
+        
+        
+        if amount_obj.amount >= int(data['amount']):
+            user =request.user
+            print("user.username")
+            print(user)
+            
+
+            product = class_obj.product
+            product.total_available -= amount
+            product.save()
+            Add_Delete.objects.create(
+                changer=user ,
+                change_type='بيع',
+                name=name,
+                amount=data['amount'],
+                type=type,
+                reader=user ,
+            )
+            print(2)
+            Reservations.objects.create(
+                amount=data['amount'],
+                product_class=class_obj,
+                user=user,
+                reservation_type='sold',
+                bill=bill_obj
+            )
+            print(3)
+            data['is_available'] ='محجوز'
+            amount_obj.amount -= amount
+            amount_obj.save()
+            data['product_id']=class_obj.product.id
+            data['type']=type
+            print('try2')
+            print(data['type'])
+            django_request = HttpRequest()
+            django_request.method = 'POST'
+            django_request.POST = data
+            print('try')
+            Notification.objects.create(
+                user=user,
+                message=f' لقد قام {request.user.username}  باضافة {amount} قطعة من المنتج {amount_obj.product_class.type} الى فاتورة {bill_obj.client_name}  '
+            )
+            
+            bill_obj.is_working='Yes'
+            bill_obj.save()
+            print('done!')
+            return Response({"details": "done!"}, status=HTTP_200_OK)
+    except Exception as e:
+            return Response({'error':str(e)},status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    return Response({"error": "You have asked for more than what you have"}, status=HTTP_404_NOT_FOUND)
+
+
+@api_view(['GET'])
+def home_for_reposotory_bill(request):
+    # 1. compute totals from Product
+
+    user=request.user
+    is_manager = request.user.groups.filter(name="staff").exists()
+    if is_manager:
+        base_qs= Product.objects.filter(
+            productt__classs__is_available ='متاح'
+        )
+    else:
+        base_qs= Product.objects.filter(
+            productt__classs__is_available ='متاح',
+            reposotory__name=user.store.name
+        )
+    filtered_qs = home_filter(request.GET, queryset=base_qs).qs
+
+    # 4. serialize
+    serializer = ProductSerializer(
+        filtered_qs, many=True, context={'request': request}
+    )
+    raw = serializer.data  # this is a list of {'name':…, 'description':…}
+
+    # 5. dedupe by (name, description)
+    unique = []
+    seen = set()
+    for item in raw:
+        key = (item.get('name'), item.get('description'))
+        if key not in seen:
+            seen.add(key)
+            unique.append(item)
+
+    user=request.user
+    store=user.store
+    store_na = None
+
+    
+    # print(user.store_na)
+    # 6. return deduped list
+    return Response({
+
+        'serialize': unique,
+    }, status=HTTP_200_OK)
+
+
+
+@api_view(['GET'])
+def reposotories_for_bill(request):
+    user=request.user
+    is_manager = request.user.groups.filter(name="staff").exists()
+    if is_manager:
+        reposotories_for_bill=Reposotory.objects.filter(is_working='Yes').exclude(name='الورشات')
+    else:
+        reposotories_for_bill=Reposotory.objects.filter(name=user.store.name,is_working='Yes')
+
+    serializer=ReposotorySerializer(reposotories_for_bill,many=True)
+
+    return Response({
+        'reposotories': serializer.data
+
+    })

@@ -10,6 +10,8 @@ urlpatterns = [
     path('product_details/', views.product_details, name='product_details'),
     path('product_types/', views.product_types, name='product_types'),
     path('notification/', views.notification, name='notification'),
+    path('register-push-token/', views.register_push_token, name='register_push_token'),
+    path('unregister-push-token/', views.unregister_push_token, name='unregister_push_token'),
     path('add_class/', views.add_class, name='add_class'),
     path('add_product/', views.add_product, name='add_product'),
     path('changetype/', views.changetype, name='changetype'),
@@ -25,6 +27,7 @@ urlpatterns = [
     path('send_reservation/', views.send_reservation, name='send_reservation'),
     path('send_requested_reservation/', views.send_requested_reservation, name='send_requested_reservation'),
     path('edit_product_name/', views.edit_product_name, name='edit_product_name'),
+    path('edit_product/', views.edit_product_name, name='edit_product'),
 
     path('search/', views.search_materials, name='search-materials'),
     path('class_type_name/', views.class_type_name, name='class_type_name'),
@@ -45,6 +48,21 @@ urlpatterns = [
     path('reposotories_for_workshop/', views.reposotories_for_workshop, name='reposotories_for_workshop'),
     path('end_workshop/', views.end_workshop, name='end_workshop'),
     path('unused_amount/', views.unused_amount, name='unused_amount'),
-path('user-allowed-repositories/<int:user_id>/', views.user_allowed_repositories, name='user_allowed_repositories'),
+    path('user-allowed-repositories/<int:user_id>/', views.user_allowed_repositories, name='user_allowed_repositories'),
+    path('ended_workshops/', views.ended_workshops, name='ended_workshops'),
+    path('turn_Reservation_to_workshops/', views.turn_Reservation_to_workshops, name='turn_Reservation_to_workshops'),
+    path('workshops_has_manager/', views.workshops_has_manager, name='workshops_has_manager'),
+    path('edit_amount_in_reservation/', views.edit_amount_in_reservation, name='edit_amount_in_reservation'),
+    path('reposotory_for_showing/', views.reposotory_for_showing, name='reposotory_for_showing'),
+    path('end_bill/', views.end_bill, name='end_bill'),
+    path('bill_details/', views.bill_details, name='bill_details'),
+    path('ended_bills/', views.ended_bills, name='ended_bills'),
+    path('bills/', views.bills, name='bills'),
+    path('addClassToBill/', views.addClassToBill, name='addClassToBill'),
+    path('addBill/', views.addBill, name='addBill'),
+    path('reposotories_for_bill/', views.reposotories_for_bill, name='reposotories_for_bill'),
+    path('home_for_reposotory_bill/', views.home_for_reposotory_bill, name='home_for_reposotory_bill'),
+
+
 
 ]

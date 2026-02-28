@@ -80,9 +80,28 @@ class Workshop(models.Model):
     location = models.CharField(max_length=30, default='')
     is_working = models.CharField(max_length=30, choices=Yes_No, default='not started yet')
     manager = models.ForeignKey(settings.AUTH_USER_MODEL,null=True, related_name='workshop_manager', on_delete=models.PROTECT)
+    createAt = models.DateTimeField(null=True, auto_now_add=True)
+    EndAt = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
        return self.name
+
+class Bill(models.Model):
+    Yes_No = (
+      ('not started yet','not started yet'),
+      ('Yes', 'Yes'),
+      ('done', 'done'),
+      ('stopped', 'stopped')
+    )
+    client_name = models.CharField(max_length=30,unique=True, default='')
+    details = models.TextField(default='')
+    is_working = models.CharField(max_length=30, choices=Yes_No, default='not started yet')
+    seller = models.ForeignKey(settings.AUTH_USER_MODEL,null=True, related_name='Bill_seller', on_delete=models.PROTECT)
+    createAt = models.DateTimeField(null=True, auto_now_add=True)
+    EndAt = models.DateTimeField(null=True, blank=True)
+    
+    def __str__(self):
+       return self.client_name
 
 
 
@@ -145,8 +164,27 @@ class Notification(models.Model):
         related_name='Notification'
     )
     createAt = models.DateTimeField(null=True, auto_now_add=True)
+    is_read=models.BooleanField(default=False)
     def __str__(self):
         return f"to {self.user} : {self.message}"
+
+
+class PushToken(models.Model):
+    """Stores Expo push tokens for users/devices."""
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name='push_tokens'
+    )
+    token = models.CharField(max_length=255, unique=True)
+    platform = models.CharField(max_length=20, null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.token} ({'active' if self.is_active else 'inactive'})"
 
 
 class Reservations(models.Model):
@@ -157,7 +195,7 @@ class Reservations(models.Model):
         ('cancelled', 'cancelled'),#الغاء الحجز
         ('sold', 'sold'),
         ('requested for workshops', 'requested for workshops'),
-        ('returned from workshops', 'returned from workshops'),        
+        ('returned from workshops', 'returned from workshops'),  
 
     )
     user = models.ForeignKey(
@@ -178,8 +216,12 @@ class Reservations(models.Model):
     product_class=models.ForeignKey(Class,related_name='reservations',default='',on_delete=models.PROTECT)
     amount=models.IntegerField(default=0)
     createAt = models.DateTimeField(null=True, auto_now_add=True)
+    EndAt = models.DateTimeField(null=True, blank=True)
+
     reservation_type=models.CharField(max_length=50,choices=types,default='')
     workshop=models.ForeignKey(Workshop,related_name='workshop_reservations',default='',on_delete=models.PROTECT,null=True,blank=True)
-    used_in_workshop=models.IntegerField(default=0,null=True,blank=True)
+    bill=models.ForeignKey(Bill,related_name='bill_reservations',default='',on_delete=models.PROTECT,null=True,blank=True)
+
+    used_in_workshop=models.IntegerField(default=-1,null=True,blank=True)
     def __str__(self):
         return f"{self.product_class.product.name}, type :{self.product_class.type} , amount:   {self.amount} is reserved"

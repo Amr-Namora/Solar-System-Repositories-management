@@ -145,18 +145,21 @@ class LogInSerializer(serializers.ModelSerializer):
 class userSerializer(serializers.ModelSerializer):
     role = serializers.SerializerMethodField()
     storeName=serializers.SerializerMethodField()
+    repositoryName=serializers.SerializerMethodField()
 
     class Meta:
         model = CustomUser
-        fields = ['id', 'username', 'is_active',  'role','storeName'
+        fields = ['id', 'username', 'is_active',  'role','storeName','repositoryName']
                       #  'date_joined',
-                  ]
+                  
 
     def get_role(self, obj):
         if obj.groups.filter(name='staff').exists():
             return 'مشرف'
         if obj.groups.filter(name='WorkShopManagers').exists():
-            return 'مشرف الورشة'    
+            return 'مشرف الورشة'  
+        if obj.groups.filter(name='StoreKeeper').exists():
+            return 'امين مستودع'
         return 'بائع'
 
     def get_storeName(self, obj):
@@ -164,6 +167,14 @@ class userSerializer(serializers.ModelSerializer):
             if obj.store.name=='الورشات':
                 return None
             return obj.store.name
+        else:
+            return None
+
+    def get_repositoryName(self, obj):
+        if obj.repository :
+            if obj.repository.name=='المستودعات':
+                return None
+            return obj.repository.name
         else:
             return None
 

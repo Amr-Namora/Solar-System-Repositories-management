@@ -29,12 +29,15 @@ def current_user(request):
     user = request.user
     is_manager = user.groups.filter(name='staff').exists()
     is_workshop_manager = user.groups.filter(name='WorkShopManagers').exists()
-    
+    is_store_keeper = user.groups.filter(name='StoreKeeper').exists()
+
     # Determine role for display
     if is_manager:
         role = 'مشرف'
     elif is_workshop_manager:
         role = 'مشرف الورشة'
+    elif is_store_keeper:
+        role = 'امين مستودع'
     else:
         role = 'بائع'
     
@@ -42,7 +45,9 @@ def current_user(request):
         'username': user.username,
         'is_manager': is_manager,
         'is_workshop_manager': is_workshop_manager,
+        'is_store_keeper': is_store_keeper,
         'role': role,
+        
         'store_name': user.store.name if user.store else None,
     })
 User = get_user_model()
@@ -74,6 +79,7 @@ class UserSignUpView(APIView):
             'مشرف': 'مشرف',
             'بائع': 'بائع',
             'مشرف ورشة': 'مشرف الورشة',
+            'امين مستودع':'امين مستودع',
             'admin': 'مشرف',
             'seller': 'بائع',
             'WorkShopManagers': 'مشرف ورشة',
@@ -88,15 +94,22 @@ class UserSignUpView(APIView):
         # Get store name from request
         store_name = request.data.get('store_name')
         allowed_repositories_ids = request.data.get('allowed_repositories', [])
-        
+        repository_name = request.data.get('repository_name')
+
         # Validate store exists
         try:
+            store = None
+            repository=None
             if user_data['role'] == 'مشرف الورشة':
                 store = Store.objects.get(name='الورشات')
             elif user_data['role'] in ['مشرف', 'بائع']:
                 store = Store.objects.get(name=store_name)
+            elif user_data['role'] ==  'امين مستودع':
+                repository = Reposotory.objects.get(name=repository_name)
         except Store.DoesNotExist:
             return Response({'error': 'Store does not exist'}, status=status.HTTP_400_BAD_REQUEST)
+        except Reposotory.DoesNotExist:
+            return Response({'error': 'Repository does not exist'}, status=status.HTTP_400_BAD_REQUEST)
 
         user_serializer = SingUpSerializerUser(data=user_data)
         if not user_serializer.is_valid():
@@ -105,6 +118,8 @@ class UserSignUpView(APIView):
         try:
             user = user_serializer.save()
             user.store = store
+            user.repository = repository
+            
             user.save()
 
             # Add allowed repositories
@@ -121,6 +136,10 @@ class UserSignUpView(APIView):
                 WorkShopManagers_group = Group.objects.get(name='WorkShopManagers')
                 user.groups.add(WorkShopManagers_group)
                 user.save()
+            elif user_data['role'] == 'امين مستودع':
+                StoreKeeper_group = Group.objects.get(name='StoreKeeper')
+                user.groups.add(StoreKeeper_group)
+                user.save()
                 
             refresh = RefreshToken.for_user(user)
             return Response({
@@ -132,6 +151,8 @@ class UserSignUpView(APIView):
 
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 @api_view(['GET'])
 def users(request):
 
@@ -149,12 +170,13 @@ def users(request):
 
 
 @api_view(['GET'])
-def users_no_boss(request):
+def users_no_boss_no_workshop_managers(request): 
 
     programmer_group=Group.objects.get(name="programers")
     boss_group=Group.objects.get(name="boss")
+    workshop_managers_group=Group.objects.get(name="WorkShopManagers")
 
-    users=CustomUser.objects.filter(is_active=True).exclude(Q(groups=programmer_group)|Q(groups=boss_group))
+    users=CustomUser.objects.filter(is_active=True).exclude(Q(groups=programmer_group)|Q(groups=boss_group)|Q(groups=workshop_managers_group))
     serializer=userSerializer(
         users,
         many=True,
@@ -312,6 +334,7 @@ class UserUpdateView(APIView):
             new_password = request.data.get('password')
             new_role = request.data.get('role')
             new_store_name = request.data.get('store_name')
+            new_repository_name = request.data.get('repository_name')
             allowed_repositories_ids = request.data.get('allowed_repositories', [])
 
             # Update username if provided and different
@@ -325,6 +348,11 @@ class UserUpdateView(APIView):
             if new_password:
                 user.set_password(new_password)
 
+            if new_role:
+                user.store=None
+                user.repository=None
+                user.allowed_repositories.clear()
+                user.save()
             # Update store if provided
             if new_store_name:
                 try:
@@ -334,24 +362,24 @@ class UserUpdateView(APIView):
                     return Response({'error': 'المتجر غير موجود'}, status=status.HTTP_400_BAD_REQUEST)
 
             # Update allowed repositories for sellers
-            if new_role == 'بائع':
+            if new_role == 'بائع' or new_role == 'مشرف الورشة':
                 if allowed_repositories_ids:
                     repositories = Reposotory.objects.filter(id__in=allowed_repositories_ids)
                     user.allowed_repositories.set(repositories)
-                else:
-                    user.allowed_repositories.clear()
-            else:
-                # Clear allowed repositories for non-sellers
-                user.allowed_repositories.clear()
+                    user.save()
+                  
 
             # Update role (group membership)
             if new_role:
+               
                 print("old role")
                 print(new_role)
                 staff_group = Group.objects.get(name='staff')
                 workshop_group = Group.objects.get(name='WorkShopManagers')
                 boss_group = Group.objects.get(name='boss')
+                reposotory_group = Group.objects.get(name='StoreKeeper')
 
+                user.groups.remove(reposotory_group)
                 user.groups.remove(staff_group)
                 user.groups.remove(workshop_group)
                 user.groups.remove(boss_group)
@@ -361,6 +389,14 @@ class UserUpdateView(APIView):
                 elif new_role == 'مشرف الورشة':
                     user.groups.add(workshop_group)
                     user.store = Store.objects.get(name='الورشات')
+                elif new_role == 'امين مستودع':
+                    user.groups.add(reposotory_group)
+                    if new_repository_name:
+                        try:
+                            repository = Reposotory.objects.get(name=new_repository_name)
+                            user.repository = repository
+                        except Reposotory.DoesNotExist:
+                            return Response({'error': 'المستودع غير موجود'}, status=status.HTTP_400_BAD_REQUEST)
             
             user.save()
 

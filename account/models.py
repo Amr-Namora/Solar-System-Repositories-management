@@ -42,6 +42,8 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     store=models.ForeignKey(Store,null=True,blank=True,on_delete=PROTECT)
+    repository=models.ForeignKey('management.Reposotory',null=True,blank=True,on_delete=PROTECT)
+
     allowed_repositories = models.ManyToManyField(
         'management.Reposotory',
         related_name="user_allowed_repositories",  # Prevents conflicts
@@ -65,6 +67,5 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.username
-
 
 

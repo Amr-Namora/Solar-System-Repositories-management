@@ -3,20 +3,21 @@
 from pathlib import Path
 from datetime import timedelta
 import os
-from decouple import config
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 AUTH_USER_MODEL = 'account.CustomUser'
 
-SECRET_KEY = config('SECRET_KEY', default='fallback-key-for-dev-only')
-DEBUG = config('DEBUG', default=False, cast=bool)
-
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'fallback-secret-key')
+DEBUG = True
 ALLOWED_HOSTS = [
-    '127.0.0.1', 
-    'localhost', 
-    'solar-system-repositories-management.onrender.com',
-    config('RENDER_EXTERNAL_HOSTNAME', default='') # This automatically catches your Render URL
+    '192.168.1.103',
+    '127.0.0.1',
+    'revesyria.com',
+    'www.revesyria.com',
+    'amrnamora.pythonanywhere.com',  # Add this
+    '.pythonanywhere.com',  # Wildcard for all subdomains
 ]
+
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -37,7 +38,6 @@ MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',  
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -49,26 +49,25 @@ MIDDLEWARE = [
 # CORS Settings
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = [
-    'https://solar-system-repositories-management.onrender.com',
+    'https://www.revesyria.com',
     'https://revesyria.com',
     'http://127.0.0.1:8000',
-    'http://192.168.1.101:8081',
-    'http://192.168.93.134:8081',
-    'http://192.168.1.101:8000',
-    'http://192.168.93.134:8000',
-    'http://localhost:8081',  # ← Add this
-
+    'http://192.168.1.103:8081',
+    'http://localhost:8081',
+    'exp://192.168.1.103:19000',  # Add your Expo URL
+    'http://192.168.1.103:19000',  # Add your Expo URL
+    'exp://192.168.1.103:19001',  # Add alternative Expo port
+    'http://192.168.1.103:19001',  # Add alternative Expo port
 ]
+
 CSRF_TRUSTED_ORIGINS = [
-    'https://solar-system-repositories-management.onrender.com',
     'https://revesyria.com',
-    'http://127.0.0.1:8000',
-    'http://192.168.1.101:8081',
-    'http://192.168.93.134:8081',
-    'http://192.168.1.101:8000',
-    'http://192.168.93.134:8000',
-    'http://localhost:8081',  # ← Add this
-    ]
+    'https://www.revesyria.com',
+    'http://127.0.0.1',
+    'http://192.168.1.103:8081',
+    'http://localhost:8081',
+    'exp://192.168.1.103:19000',  # Add Expo URL
+]
 ROOT_URLCONF = 'project.urls'
 
 
@@ -145,15 +144,8 @@ USE_I18N = True
 USE_TZ = True
 DEFAULT_CHARSET = 'utf-8'
 STATIC_ROOT='staticfiles'
-STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
-
-# Add this to handle compression and caching (improves speed)
-STORAGES = {
-    "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
-    },
-}
+STATIC_URL = '/static/'
 # STATICFILES_DIRS=[
 # os.path.join(BASE_DIR,'project/static')
 # ]

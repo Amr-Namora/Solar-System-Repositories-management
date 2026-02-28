@@ -8,7 +8,7 @@ admin.site.register(Store)
 
 class CustomUserAdmin(UserAdmin):
     model = CustomUser
-    list_display = ('username', 'is_staff', 'is_active','store')
+    list_display = ('username', 'is_staff', 'is_active','store','repository')
     list_filter = ('is_staff', 'is_active')
     ordering = ('username',)
     search_fields = ['username']  # This will search through related Person fields
@@ -16,7 +16,7 @@ class CustomUserAdmin(UserAdmin):
     fieldsets = (
         (None, {'fields': ('username', 'password')}),
         (_('Permissions'), {
-            'fields': ('is_staff', 'is_active', 'is_superuser', 'groups', 'user_permissions','store','allowed_repositories')
+            'fields': ('is_staff', 'is_active', 'is_superuser', 'groups', 'user_permissions','store','allowed_repositories','repository'),
         }),
         (_('Important dates'), {'fields': ('last_login',)}),
     )
@@ -26,7 +26,7 @@ class CustomUserAdmin(UserAdmin):
             None,
             {
                 'classes': ('wide',),
-                'fields': ('username', 'password1', 'password2', 'is_staff', 'is_active','store', 'allowed_repositories'),
+                'fields': ('username', 'password1', 'password2', 'is_staff', 'is_active','store', 'allowed_repositories','repository'),
             },
         ),
     )
