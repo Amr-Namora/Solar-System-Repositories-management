@@ -3,17 +3,20 @@
 from pathlib import Path
 from datetime import timedelta
 import os
-from dotenv import load_dotenv
-load_dotenv()
+from decouple import config
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 AUTH_USER_MODEL = 'account.CustomUser'
 
-SECRET_KEY = os.getenv('SECRET_KEY', 'fallback-key-for-dev-only')
-# DEBUG = os.getenv('DEBUG', 'False').lower() == 'True'
-DEBUG = 'True'
+SECRET_KEY = config('SECRET_KEY', default='fallback-key-for-dev-only')
+DEBUG = config('DEBUG', default=False, cast=bool)
 
-ALLOWED_HOSTS = ['192.168.93.134','192.168.1.101','127.0.0.1','192.168.92.59','solar-system-repositories-management.onrender.com']
+ALLOWED_HOSTS = [
+    '127.0.0.1', 
+    'localhost', 
+    'solar-system-repositories-management.onrender.com',
+    config('RENDER_EXTERNAL_HOSTNAME', default='') # This automatically catches your Render URL
+]
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -34,6 +37,7 @@ MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',  
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -141,8 +145,15 @@ USE_I18N = True
 USE_TZ = True
 DEFAULT_CHARSET = 'utf-8'
 STATIC_ROOT='staticfiles'
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATIC_URL = '/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+
+# Add this to handle compression and caching (improves speed)
+STORAGES = {
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 # STATICFILES_DIRS=[
 # os.path.join(BASE_DIR,'project/static')
 # ]
