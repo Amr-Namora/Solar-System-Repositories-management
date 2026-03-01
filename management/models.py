@@ -16,7 +16,7 @@ class Reposotory(models.Model):
       ('Yes', 'Yes'),
       ('No', 'No')
     )
-    name = models.CharField(max_length=50,unique=True, default='')
+    name = models.CharField(max_length=50,unique=True, default='',db_index=True)
     location = models.CharField(max_length=100, default='')
     is_working = models.CharField(max_length=5, choices=Yes_No, default='Yes')
 
@@ -26,7 +26,7 @@ class Reposotory(models.Model):
 
 
 class Product(models.Model):
-    name=models.CharField(max_length=50,default='')
+    name=models.CharField(max_length=50,default='',db_index=True)
     description=models.TextField(default='')
     total_available=models.BigIntegerField(default=0)
     total_on_way=models.BigIntegerField(default=0)
@@ -41,9 +41,9 @@ class Class(models.Model):
         ('Yes', 'Yes'),
         ('No', 'No')
     )
-    product=models.ForeignKey(Product, null=True, blank=True,related_name='productt',default='',on_delete=models.CASCADE)
-    type=models.CharField(max_length=50,default='')
-    active = models.CharField(max_length=5, choices=Yes_No, default='Yes')
+    product=models.ForeignKey(Product, null=True, blank=True,related_name='classes',default='',on_delete=models.CASCADE)
+    type=models.CharField(max_length=50,default='',db_index=True)
+    active = models.CharField(max_length=5, choices=Yes_No, default='Yes',db_index=True)
     def __str__(self):
         return f"type :{self.type} "
 
@@ -61,9 +61,9 @@ class Amounts(models.Model):
         ('normal','normal'),
         ('workshop','workshop'),
     )
-    product_class=models.ForeignKey(Class,related_name='classs',default='',on_delete=models.PROTECT)
+    product_class=models.ForeignKey(Class,related_name='amounts',default='',on_delete=models.PROTECT)
     amount=models.BigIntegerField(default=0)
-    is_available=models.CharField(max_length=30,choices=types)
+    is_available=models.CharField(max_length=30,choices=types,db_index=True)
     def __str__(self):
         return f"{self.product_class.product.name}, type :{self.product_class.type} , amount:   {self.amount}"
 
@@ -147,7 +147,7 @@ class  Add_Delete(models.Model):
     name=models.CharField(max_length=50,null=True,blank=True)
     amount = models.BigIntegerField(null=True,blank=True)
     details=models.TextField(null=True,blank=True)
-    createAt = models.DateTimeField(null=True, auto_now_add=True)
+    createAt = models.DateTimeField(null=True, auto_now_add=True,db_index=True)
 
     def __str__(self):
         return f"to : {self.change_type}"
@@ -215,10 +215,10 @@ class Reservations(models.Model):
     )
     product_class=models.ForeignKey(Class,related_name='reservations',default='',on_delete=models.PROTECT)
     amount=models.BigIntegerField(default=0)
-    createAt = models.DateTimeField(null=True, auto_now_add=True)
+    createAt = models.DateTimeField(null=True, auto_now_add=True,db_index=True)
     EndAt = models.DateTimeField(null=True, blank=True)
 
-    reservation_type=models.CharField(max_length=50,choices=types,default='')
+    reservation_type=models.CharField(max_length=50,choices=types,default='',db_index=True)
     workshop=models.ForeignKey(Workshop,related_name='workshop_reservations',default='',on_delete=models.PROTECT,null=True,blank=True)
     bill=models.ForeignKey(Bill,related_name='bill_reservations',default='',on_delete=models.PROTECT,null=True,blank=True)
 

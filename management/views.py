@@ -288,7 +288,11 @@ def product_types(request):
                 amount__gt=0
             )
 
-    serialize = AmountsTypeSerializer(details, many=True, context={'request': request})
+    is_empty=details.filter(amount__gt=0).exists()
+        
+    # Amounts.objects.filter(product_class=obj.product_class, amount__gt=0).exists()    
+
+    serialize = AmountsTypeSerializer(details, many=True, context={'request': request ,'is_empty':is_empty})
     print('here product_types serialize:',serialize.data)
     # Collect unique types and their 'متاح' amount
     unique_data = {}

@@ -1,42 +1,22 @@
 from rest_framework import serializers
-from .models import Reservations, Product, Amounts, Notification, Class, Add_Delete, Reposotory, Workshop, PushToken,Bill
+from .models import Reservations, Product, Amounts, Notification, Class, Add_Delete, Reposotory, Workshop, PushToken, Bill
 
 
 class ProductSerializer(serializers.ModelSerializer):
-    # product = ProductSerializer()
     class Meta:
         model = Product
         fields = "__all__"
 
 
 class AmountsAsProductSerializer(serializers.ModelSerializer):
-    description=serializers.SerializerMethodField()
-    name=serializers.SerializerMethodField()
-    total_on_way=serializers.SerializerMethodField()
-    total_available=serializers.SerializerMethodField()
+    description = serializers.ReadOnlyField(source='product_class.product.description', allow_null=True)
+    name = serializers.ReadOnlyField(source='product_class.product.name', allow_null=False)
+    total_on_way = serializers.ReadOnlyField(source='product_class.product.total_on_way', allow_null=False)
+    total_available = serializers.ReadOnlyField(source='product_class.product.total_available', allow_null=False)
+
     class Meta:
         model = Amounts
-        fields = ('description','name','total_available','total_on_way','id')
-    def get_name(self,obj):
-        if obj.product_class.product:
-            return obj.product_class.product.name
-        else :
-            return None
-    def get_description(self,obj):
-        if obj.product_class.product:
-            return obj.product_class.product.description
-        else :
-            return None
-    def get_total_on_way(self,obj):
-        if obj.product_class.product:
-            return obj.product_class.product.total_on_way
-        else :
-            return None
-    def get_total_available(self,obj):
-        if obj.product_class.product:
-            return obj.product_class.product.total_available
-        else :
-            return None
+        fields = ('description', 'name', 'total_available', 'total_on_way', 'id')
 
 
 class ClassSerializer(serializers.ModelSerializer):
@@ -46,76 +26,37 @@ class ClassSerializer(serializers.ModelSerializer):
 
 
 class AmountsSerializer(serializers.ModelSerializer):
-    description=serializers.SerializerMethodField()
-    name=serializers.SerializerMethodField()
-    type=serializers.SerializerMethodField()
+    description = serializers.ReadOnlyField(source='product_class.product.description', allow_null=True)
+    name = serializers.ReadOnlyField(source='product_class.product.name', allow_null=False)
+    type = serializers.ReadOnlyField(source='product_class.type', allow_null=False)
+    class_id = serializers.ReadOnlyField(source='product_class.id', allow_null=False)
+    product_id = serializers.ReadOnlyField(source='product_class.product.id', allow_null=False)
+    
+    # Kept as method field because it contains conditional business logic
     available_amount = serializers.SerializerMethodField()
-    class_id=serializers.SerializerMethodField()
-    product_id=serializers.SerializerMethodField()
 
     class Meta:
         model = Amounts
         fields = "__all__"
-    def get_name(self,obj):
-        if obj.product_class.product:
-            return obj.product_class.product.name
-        else :
-            return None
-    def get_description(self,obj):
-        if obj.product_class.product:
-            return obj.product_class.product.description
-        else :
-            return None
-    def get_type(self,obj):
-        if obj.product_class:
-            return obj.product_class.type
-        else :
-            return None
+
     def get_available_amount(self, obj):
         # Only return amount if this instance is 'متاح'
         if obj.is_available == 'متاح':
             return obj.amount
         return None
 
-    def get_class_id(self, obj):
-        # Only return amount if this instance is 'متاح'
-        if obj.product_class:
-            return obj.product_class.id
-        return None
-
-    def get_product_id(self, obj):
-        # Only return amount if this instance is 'متاح'
-        if obj.product_class.product:
-            return obj.product_class.product.id
-        return None
-
 
 class AmountsTypeSerializer(serializers.ModelSerializer):
-    type = serializers.SerializerMethodField()
-    available_amount = serializers.SerializerMethodField()
+    type = serializers.ReadOnlyField(source='product_class.type', allow_null=True)
+    id = serializers.ReadOnlyField(source='product_class.id', allow_null=True)
+    is_working = serializers.ReadOnlyField(source='product_class.active', allow_null=True)
     is_empyt = serializers.SerializerMethodField()
-    is_working=serializers.SerializerMethodField()
-    id=serializers.SerializerMethodField()
-    #manager_name=serializers.SerializerMethodField()
+    
+    available_amount = serializers.SerializerMethodField()
+
     class Meta:
         model = Amounts
-        fields = ['type', 'available_amount','id','is_empyt','is_working']
-
-    # def get_manager_name(self,obj):
-    #     if obj.product_class and obj.product_class.product and obj.product_class.product.reposotory:
-    #         if obj.product_class.product.reposotory.manager:
-    #             return obj.product_class.product.reposotory.manager.username
-    #         else :
-    #             return None
-    #     return None
-    def get_type(self, obj):
-        if obj.product_class:
-            return obj.product_class.type
-        return None
-    def get_id(self, obj):
-        if obj.product_class:
-            return obj.product_class.id
-        return None
+        fields = ['type', 'available_amount', 'id', 'is_empyt', 'is_working']
 
     def get_available_amount(self, obj):
         # Only return amount if this instance is 'متاح'
@@ -123,24 +64,10 @@ class AmountsTypeSerializer(serializers.ModelSerializer):
             return obj.amount
         return None
     def get_is_empyt(self, obj):
-
-        if obj.product_class :
-
-            return Amounts.objects.filter(product_class=obj.product_class,amount__gt=0).exists()
-        return None
-    def get_is_working(self, obj):
-
-        if obj.product_class :
-            active=obj.product_class.active
-            if active == 'Yes':
-                return True
-            else :
-                return False
-        return None
+        return self.context.get('is_empyt', False)    
 
 
 class NotificationSerializer(serializers.ModelSerializer):
-
     class Meta:
         model = Notification
         fields = "__all__"
@@ -152,260 +79,13 @@ class PushTokenSerializer(serializers.ModelSerializer):
         fields = ('id','user','token','platform','is_active','created_at')
         read_only_fields = ('id','user','is_active','created_at')
 
+
 class Add_DeleteSerializer(serializers.ModelSerializer):
-    username = serializers.SerializerMethodField()
+    username = serializers.ReadOnlyField(source='changer.username', allow_null=True)
+
     class Meta:
         model = Add_Delete
         fields = "__all__"
-
-    def get_username(self, obj):
-        if obj.changer:
-            return obj.changer.username
-        else:
-            return None
-
-# class ReservationsSerializer(serializers.ModelSerializer):
-#     description = serializers.SerializerMethodField()
-#     name = serializers.SerializerMethodField()
-#     type = serializers.SerializerMethodField()
-#     username = serializers.SerializerMethodField()
-#     newusername = serializers.SerializerMethodField()
-#     reposotory = serializers.SerializerMethodField()
-#     workshop_name = serializers.SerializerMethodField()
-#     workshop_isworking=serializers.SerializerMethodField()
-#     to_send_to_workshop=serializers.SerializerMethodField()
-#     to_send=serializers.SerializerMethodField()
-#     to_not_sending=serializers.SerializerMethodField()
-#     to_confirm=serializers.SerializerMethodField()
-#     to_turn=serializers.SerializerMethodField()
-#     to_cancle_confirm_turning=serializers.SerializerMethodField()
-#     to_cancle_reserve=serializers.SerializerMethodField()
-#     to_edit_amount_in_reservation=serializers.SerializerMethodField()
-#     class Meta:
-#         model = Reservations
-#         fields = ('name' #changer or reader
-#                   ,'createAt','amount','description','type','username',
-#                   'reservation_type','id','newusername','reposotory','workshop_name','workshop_isworking'
-#                     ,'used_in_workshop','to_send_to_workshop',
-#                     'to_send','to_not_sending','to_confirm','to_turn','to_cancle_confirm_turning','to_cancle_reserve','to_edit_amount_in_reservation'
-#                   )
-
-#     def get_to_edit_amount_in_reservation(self,obj):
-#         curr_user = self.context.get('request').user
-#         if obj.user and obj.user.store  and obj.reservation_type :
-#             if curr_user.store==obj.user.store and   obj.reservation_type == 'pending':
-#                 return True
-#             if curr_user.groups.filter(name="boss").exists() or curr_user.groups.filter(name="staff").exists():
-#                 if obj.reservation_type == 'pending' :
-#                     return True
-
-#             if obj.workshop and obj.workshop.manager:
-#                 if obj.workshop.manager==curr_user and obj.reservation_type == 'pending' :
-#                     return True
-
-#         return False
-
-
-#     def get_to_cancle_reserve(self,obj):
-#         curr_user = self.context.get('request').user
-#         if obj.user and obj.user.store  and obj.reservation_type :
-#             if obj.workshop:
-#                 return False
-
-#             if curr_user.store==obj.user.store and   obj.reservation_type == 'pending':
-#                return True
-#         return False
-
-#     def get_to_send(self,obj):
-#         curr_user = self.context.get('request').user
-
-#         #print('get_to_send')
-#         if curr_user.groups.filter(name="staff").exists() or curr_user.groups.filter(name="StoreKeeper").exists():
-#             if  obj.reservation_type == 'pending' and not obj.workshop:
-#                 return True
-#             else :
-#                 return False
-#         #print(obj.amount)
-#         if obj.user and obj.user.store  and obj.reservation_type  and obj.product_class and obj.product_class.product and obj.product_class.product.reposotory :
-#             # if  obj.workshop:
-#             #     return False
-#             #print(1)
-#             if curr_user.groups.filter(name="staff").exists() and  obj.reservation_type == 'pending':
-#                 #print(2)
-
-#                 return True
-#             if  obj.product_class.product.reposotory.name == curr_user.store.name and obj.reservation_type == 'pending':
-#                 #print(3)
-#                 return True
-
-#         return False
-
-#     def get_to_send_to_workshop(self,obj):
-#         curr_user = self.context.get('request').user
-#         #print('get_to_send_to_workshop')
-#         #print(obj.amount)
-#         if not obj.workshop:
-           
-#             #print('no workshop')
-#             return False
-#         if obj.amount ==2:
-#                 print('here')
-#         amount_available=Amounts.objects.filter(is_available='متاح',product_class=obj.product_class).first()
-#         amount_requested=Amounts.objects.filter(is_available='مطلوب للشراء',product_class=obj.product_class).first()
-
-#         # if not (amount_available and amount_available.amount >= obj.amount):
-#             #print('not enough amount')
-#             # if obj.amount ==2 and obj.workshop.name=="fffffffffffff":
-#             #     print('not enough amount')
-#             #     print(amount_available.amount )
-#             #     print(obj.amount)
-#             # return False
-#         if not amount_available :
-#             return False
-#         if amount_requested and amount_requested.amount >0 and amount_available.amount < obj.amount:
-#             return False
-
-#         if obj.user and obj.user.store  and obj.reservation_type :
-#             if (curr_user.groups.filter(name="staff").exists() or curr_user.groups.filter(name="StoreKeeper").exists() ) and  obj.reservation_type == 'pending':
-#                 #print(4)
-#                 return True
-
-#             if  obj.reservation_type == 'requested for workshops':
-#                #print(5)
-#                return True
-#         if obj.amount ==2 and obj.workshop.name=="fffffffffffff":
-#                 print('end of function')
-
-
-#         return False
-
-#     def get_to_confirm(self,obj):
-#         curr_user = self.context.get('request').user
-
-
-#         if obj.user and obj.user.store  and obj.reservation_type :
-#             if obj.newOwner:
-#                 return False
-#             if obj.reservation_type == 'sent':
-#                 if curr_user.groups.filter(name="boss").exists() or curr_user.groups.filter(name="StoreKeeper").exists():
-#                    return True
-#                 if obj.workshop and obj.workshop.manager:
-#                     if obj.workshop.manager==curr_user :
-#                         return True
-#                     else :
-#                         return False
-
-#             if  curr_user.store==obj.user.store and (obj.reservation_type == 'sent' or obj.reservation_type == 'returned from workshops') :
-#                return True
-#         return False
-
-#     def get_to_not_sending(self,obj):
-#         curr_user = self.context.get('request').user
-
-#         if curr_user.groups.filter(name="boss").exists() or curr_user.groups.filter(name="staff").exists():
-#             if  obj.reservation_type == 'pending':
-#                 return True
-
-#         return False
-
-
-
-#     def get_to_turn(self,obj):
-
-#         curr_user = self.context.get('request').user
-#         if curr_user.groups.filter(name="boss").exists() or curr_user.groups.filter(name="StoreKeeper").exists():
-#             if (obj.reservation_type == 'sent'or obj.reservation_type == 'returned from workshops' ) and not obj.newOwner:
-#                 return True
-#             else :
-#                 return False
-
-
-#         if obj.user and obj.user.store  and obj.reservation_type :
-#             if obj.newOwner:
-#                 return False
-#             # if obj.reservation_type == 'sent':
-#             #     print('get_to_turn')
-#             #     print(obj.user.username)
-#             #     print(curr_user.username)
-#             #     print(obj.user.store.name)
-#             #     print(curr_user.store.name)
-
-#             if obj.reservation_type == 'sent'or obj.reservation_type == 'returned from workshops':
-#                 if curr_user.groups.filter(name="boss").exists():
-#                    return True
-#                 if obj.workshop and obj.workshop.manager:
-#                     if obj.workshop.manager==curr_user :
-#                         return True
-#                     else :
-#                         return False
-#             if  curr_user.store==obj.user.store and (obj.reservation_type == 'sent' or obj.reservation_type == 'returned from workshops') :
-#                return True
-#         return False
-
-#     def get_to_cancle_confirm_turning(self,obj):
-#         curr_user = self.context.get('request').user
-
-
-#         if obj.user and obj.user.store  and obj.reservation_type and obj.newOwner :
-
-#             if curr_user.groups.filter(name="boss").exists() :
-#                return True
-#             if obj.workshop and obj.workshop.manager:
-#                 if obj.workshop.manager==curr_user :
-#                     return True
-#                 else :
-#                     return False
-
-
-#             if   obj.newOwner.store == curr_user.store and ( obj.reservation_type == 'sent' or obj.reservation_type == 'returned from workshops') :
-#                return True
-#         return False
-
-
-
-
-#     def get_name(self, obj):
-#         if obj.product_class.product:
-#             return obj.product_class.product.name
-#         else:
-#             return None
-#     def get_workshop_name(self, obj):
-#         if obj.workshop:
-#             return obj.workshop.name
-#         else:
-#             return None
-#     def get_workshop_isworking(self, obj):
-#         if obj.workshop:
-#             return obj.workshop.is_working
-#         else:
-#             return None
-#     def get_description(self, obj):
-#         if obj.product_class.product:
-#             return obj.product_class.product.description
-#         else:
-#             return None
-#     def get_reposotory(self, obj):
-#         if obj.product_class.product.reposotory:
-#             return obj.product_class.product.reposotory.name
-#         else:
-#             return None
-
-#     def get_type(self, obj):
-#         if obj.product_class:
-#             return obj.product_class.type
-#         else:
-#             return None
-#     def get_username(self, obj):
-#         if obj.user:
-#             return obj.user.username
-#         else:
-#             return None
-#     def get_newusername(self, obj):
-#         if obj.newOwner:
-#             return obj.newOwner.username
-#         else:
-#             return None
-
 
 
 class ReservationsSerializer(serializers.ModelSerializer):
@@ -587,35 +267,24 @@ class ReservationsSerializer(serializers.ModelSerializer):
                return True
         return False
 
-        
 
 class ReposotorySerializer(serializers.ModelSerializer):
     class Meta:
-        model=Reposotory
-        fields='__all__'
+        model = Reposotory
+        fields = '__all__'
 
 
 class WorkshopSerializer(serializers.ModelSerializer):
-    manager_name=serializers.SerializerMethodField()
+    manager_name = serializers.ReadOnlyField(source='manager.username', allow_null=True)
 
     class Meta:
-        model=Workshop
-        fields='__all__'
-    def get_manager_name(self,obj):
-        if obj.manager:
-            return obj.manager.username
-        else :
-            return None
+        model = Workshop
+        fields = '__all__'
 
 
 class BillsSerializer(serializers.ModelSerializer):
-    seller_name=serializers.SerializerMethodField()
+    seller_name = serializers.ReadOnlyField(source='seller.username', allow_null=True)
 
     class Meta:
-        model=Bill
-        fields='__all__'
-    def get_seller_name(self,obj):
-        if obj.seller:
-            return obj.seller.username
-        else :
-            return None
+        model = Bill
+        fields = '__all__'

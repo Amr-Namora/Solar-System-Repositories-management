@@ -10,7 +10,7 @@ class Store(models.Model):
         ('Yes','Yes'),
         ('No','No')
     )
-    name=models.CharField(max_length=30,default='')
+    name=models.CharField(max_length=30,default='',db_index=True)
     location=models.CharField(max_length=30,default='')
     is_working=models.CharField(max_length=5,choices=Yes_No,default='Yes')
     def __str__(self):
