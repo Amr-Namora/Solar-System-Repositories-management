@@ -21,6 +21,12 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from .models import Add_Delete,Workshop,Bill
 from .serializers import Add_DeleteSerializer,WorkshopSerializer
+from django.db.models import Q, Count
+from django.utils import timezone
+from datetime import timedelta
+from rest_framework.response import Response
+from rest_framework.decorators import api_view
+from rest_framework import serializers
 
 from .filters import home_filter
 import django_filters
@@ -596,91 +602,117 @@ def history_changes(request):
 
 @api_view(['GET'])
 def newreservation(request):
-    print('newreservation')
     user = request.user
-    print('user',user)
+    
     data = {
         'reposotory_id': request.GET.get('reposotory_id'),
         'workshop_id': request.GET.get('workshop_id'),
     }
-    print('data',data  )
-    is_store_keeper = request.user.groups.filter(name="StoreKeeper").exists()
-    username = user.username
-    is_workshop_manager = request.user.groups.filter(name="WorkShopManagers").exists()
-    print('username',username)
-    is_manager = request.user.groups.filter(name="staff").exists()
 
-    if   request.user.groups.filter(name="WorkShopManagers").exists():
+    # 1. Context Passing: Evaluate user groups ONCE using a single query
+    user_groups = set(user.groups.values_list('name', flat=True))
+    is_store_keeper = "StoreKeeper" in user_groups
+    is_workshop_manager = "WorkShopManagers" in user_groups
+    is_staff = "staff" in user_groups
+    is_boss = "boss" in user_groups
+    username = user.username
+
+    # Base QuerySet logic
+    if is_workshop_manager:
         details = Reservations.objects.filter(
-            Q(user=request.user) |
-            Q(newOwner=request.user) |
-            Q(workshop__manager=request.user) ,
-            
+            Q(user=user) |
+            Q(newOwner=user) |
+            Q(workshop__manager=user)
         ).order_by('-createAt')    
-    elif is_manager:
+    elif is_staff:
         details = Reservations.objects.all().order_by('-createAt')
     elif is_store_keeper:
         details = Reservations.objects.filter(
-            Q(user=request.user) |
-            Q(newOwner=request.user) |
-            Q(product_class__product__reposotory__name=request.user.repository.name)|
-            Q(workshop__manager=request.user) |
-            Q(user__store__name=request.user.repository.name),
+            Q(user=user) |
+            Q(newOwner=user) |
+            Q(product_class__product__reposotory__name=user.repository.name) |
+            Q(workshop__manager=user) |
+            Q(user__store__name=user.repository.name)
         ).order_by('-createAt')
-        print(user)
-        print(user.repository.name)
-
     else:
         details = Reservations.objects.filter(
-            Q(user=request.user) |
-            Q(newOwner=request.user) |
-            Q(product_class__product__reposotory__name=request.user.store.name)|
-            Q(workshop__manager=request.user) |
-            Q(user__store__name=request.user.store.name),
+            Q(user=user) |
+            Q(newOwner=user) |
+            Q(product_class__product__reposotory__name=user.store.name) |
+            Q(workshop__manager=user) |
+            Q(user__store__name=user.store.name)
         ).order_by('-createAt')
-    print(10)
 
-    if data['reposotory_id']:
-        rep=Reposotory.objects.get(id=data['reposotory_id'])    
+    # Apply Filters
+    if data.get('reposotory_id'):
+        rep = Reposotory.objects.get(id=data['reposotory_id'])    
         details = details.filter(Q(user__store__name=rep.name) | Q(user__repository__name=rep.name))
 
-    if data['workshop_id']:
+    if data.get('workshop_id'):
         details = details.filter(workshop__id=data['workshop_id'])
-    print(11)
-    # Classification logic
+
+    # 2. Database Optimization: Add requested select_related fields
+    details = details.select_related(
+        'user', 
+        'user__store', 
+        'user__repository', 
+        'newOwner', 
+        'newOwner__store', 
+        'workshop', 
+        'workshop__manager',
+        'product_class',
+        'product_class__product', 
+        'product_class__product__reposotory'
+    )
+
+    # 3. Aggregation: Replace Python loop with Database aggregation
     now = timezone.now()
     five_days_ago = now - timedelta(days=5)
 
-    # Initialize counters
-    recent_counts = Counter()
-    total_counts = Counter()
+    counts = details.aggregate(
+        cancelled_last_5_days=Count('id', filter=Q(reservation_type='cancelled', createAt__gte=five_days_ago)),
+        delivered_last_5_days=Count('id', filter=Q(reservation_type='delivered', createAt__gte=five_days_ago)),
+        pending_total=Count('id', filter=Q(reservation_type='pending')),
+        sent_total=Count('id', filter=Q(reservation_type='sent')),
+        returned_from_workshops_total=Count('id', filter=Q(reservation_type='returned from workshops')),
+        requested_total=Count('id', filter=Q(reservation_type='requested for workshops')),
+    )
 
-    for reservation in details:
-        r_type = reservation.reservation_type
-        created = reservation.createAt
+    # 4. Handle hidden N+1 inside get_to_send_to_workshop (bulk fetch Amounts instead of inside Serializer)
+    product_class_ids = [d.product_class_id for d in details if d.product_class_id]
+    amounts = Amounts.objects.filter(product_class_id__in=product_class_ids)
+    amounts_dict = {}
+    for amt in amounts:
+        if amt.product_class_id not in amounts_dict:
+            amounts_dict[amt.product_class_id] = {}
+        amounts_dict[amt.product_class_id][amt.is_available] = amt.amount
 
-        if r_type in ['cancelled', 'delivered'] and created and created >= five_days_ago:
-            recent_counts[r_type] += 1
+    # Prepare Context
+    context = {
+        'request': request,
+        'is_staff': is_staff,
+        'is_store_keeper': is_store_keeper,
+        'is_workshop_manager': is_workshop_manager,
+        'is_boss': is_boss,
+        'amounts_dict': amounts_dict,
+    }
 
-        if r_type in ['pending', 'sent','requested for workshops', 'returned from workshops']:
-            total_counts[r_type] += 1
-
-    serializer = ReservationsSerializer(details, many=True, context={'request': request})
+    serializer = ReservationsSerializer(details, many=True, context=context)
+    
     return Response({
-        'count':details.count(),
-        'is_manager': is_manager,
+        'count': details.count(),
+        'is_manager': is_staff,
         'is_workshop_manager': is_workshop_manager,
         'is_store_keeper': is_store_keeper,
         'username': username,
         'details': serializer.data,
         'counts': {
-            'cancelled_last_5_days': recent_counts['cancelled'],
-            'delivered_last_5_days': recent_counts['delivered'],
-            'pending_total': total_counts['pending'],
-            'sent_total': total_counts['sent'],
-            'returned_from_workshops_total': total_counts['returned from workshops'],
-
-            'requested_total': total_counts['requested for workshops'],
+            'cancelled_last_5_days': counts['cancelled_last_5_days'],
+            'delivered_last_5_days': counts['delivered_last_5_days'],
+            'pending_total': counts['pending_total'],
+            'sent_total': counts['sent_total'],
+            'returned_from_workshops_total': counts['returned_from_workshops_total'],
+            'requested_total': counts['requested_total'],
         }
     })
 

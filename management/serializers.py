@@ -164,250 +164,430 @@ class Add_DeleteSerializer(serializers.ModelSerializer):
         else:
             return None
 
+# class ReservationsSerializer(serializers.ModelSerializer):
+#     description = serializers.SerializerMethodField()
+#     name = serializers.SerializerMethodField()
+#     type = serializers.SerializerMethodField()
+#     username = serializers.SerializerMethodField()
+#     newusername = serializers.SerializerMethodField()
+#     reposotory = serializers.SerializerMethodField()
+#     workshop_name = serializers.SerializerMethodField()
+#     workshop_isworking=serializers.SerializerMethodField()
+#     to_send_to_workshop=serializers.SerializerMethodField()
+#     to_send=serializers.SerializerMethodField()
+#     to_not_sending=serializers.SerializerMethodField()
+#     to_confirm=serializers.SerializerMethodField()
+#     to_turn=serializers.SerializerMethodField()
+#     to_cancle_confirm_turning=serializers.SerializerMethodField()
+#     to_cancle_reserve=serializers.SerializerMethodField()
+#     to_edit_amount_in_reservation=serializers.SerializerMethodField()
+#     class Meta:
+#         model = Reservations
+#         fields = ('name' #changer or reader
+#                   ,'createAt','amount','description','type','username',
+#                   'reservation_type','id','newusername','reposotory','workshop_name','workshop_isworking'
+#                     ,'used_in_workshop','to_send_to_workshop',
+#                     'to_send','to_not_sending','to_confirm','to_turn','to_cancle_confirm_turning','to_cancle_reserve','to_edit_amount_in_reservation'
+#                   )
+
+#     def get_to_edit_amount_in_reservation(self,obj):
+#         curr_user = self.context.get('request').user
+#         if obj.user and obj.user.store  and obj.reservation_type :
+#             if curr_user.store==obj.user.store and   obj.reservation_type == 'pending':
+#                 return True
+#             if curr_user.groups.filter(name="boss").exists() or curr_user.groups.filter(name="staff").exists():
+#                 if obj.reservation_type == 'pending' :
+#                     return True
+
+#             if obj.workshop and obj.workshop.manager:
+#                 if obj.workshop.manager==curr_user and obj.reservation_type == 'pending' :
+#                     return True
+
+#         return False
+
+
+#     def get_to_cancle_reserve(self,obj):
+#         curr_user = self.context.get('request').user
+#         if obj.user and obj.user.store  and obj.reservation_type :
+#             if obj.workshop:
+#                 return False
+
+#             if curr_user.store==obj.user.store and   obj.reservation_type == 'pending':
+#                return True
+#         return False
+
+#     def get_to_send(self,obj):
+#         curr_user = self.context.get('request').user
+
+#         #print('get_to_send')
+#         if curr_user.groups.filter(name="staff").exists() or curr_user.groups.filter(name="StoreKeeper").exists():
+#             if  obj.reservation_type == 'pending' and not obj.workshop:
+#                 return True
+#             else :
+#                 return False
+#         #print(obj.amount)
+#         if obj.user and obj.user.store  and obj.reservation_type  and obj.product_class and obj.product_class.product and obj.product_class.product.reposotory :
+#             # if  obj.workshop:
+#             #     return False
+#             #print(1)
+#             if curr_user.groups.filter(name="staff").exists() and  obj.reservation_type == 'pending':
+#                 #print(2)
+
+#                 return True
+#             if  obj.product_class.product.reposotory.name == curr_user.store.name and obj.reservation_type == 'pending':
+#                 #print(3)
+#                 return True
+
+#         return False
+
+#     def get_to_send_to_workshop(self,obj):
+#         curr_user = self.context.get('request').user
+#         #print('get_to_send_to_workshop')
+#         #print(obj.amount)
+#         if not obj.workshop:
+           
+#             #print('no workshop')
+#             return False
+#         if obj.amount ==2:
+#                 print('here')
+#         amount_available=Amounts.objects.filter(is_available='متاح',product_class=obj.product_class).first()
+#         amount_requested=Amounts.objects.filter(is_available='مطلوب للشراء',product_class=obj.product_class).first()
+
+#         # if not (amount_available and amount_available.amount >= obj.amount):
+#             #print('not enough amount')
+#             # if obj.amount ==2 and obj.workshop.name=="fffffffffffff":
+#             #     print('not enough amount')
+#             #     print(amount_available.amount )
+#             #     print(obj.amount)
+#             # return False
+#         if not amount_available :
+#             return False
+#         if amount_requested and amount_requested.amount >0 and amount_available.amount < obj.amount:
+#             return False
+
+#         if obj.user and obj.user.store  and obj.reservation_type :
+#             if (curr_user.groups.filter(name="staff").exists() or curr_user.groups.filter(name="StoreKeeper").exists() ) and  obj.reservation_type == 'pending':
+#                 #print(4)
+#                 return True
+
+#             if  obj.reservation_type == 'requested for workshops':
+#                #print(5)
+#                return True
+#         if obj.amount ==2 and obj.workshop.name=="fffffffffffff":
+#                 print('end of function')
+
+
+#         return False
+
+#     def get_to_confirm(self,obj):
+#         curr_user = self.context.get('request').user
+
+
+#         if obj.user and obj.user.store  and obj.reservation_type :
+#             if obj.newOwner:
+#                 return False
+#             if obj.reservation_type == 'sent':
+#                 if curr_user.groups.filter(name="boss").exists() or curr_user.groups.filter(name="StoreKeeper").exists():
+#                    return True
+#                 if obj.workshop and obj.workshop.manager:
+#                     if obj.workshop.manager==curr_user :
+#                         return True
+#                     else :
+#                         return False
+
+#             if  curr_user.store==obj.user.store and (obj.reservation_type == 'sent' or obj.reservation_type == 'returned from workshops') :
+#                return True
+#         return False
+
+#     def get_to_not_sending(self,obj):
+#         curr_user = self.context.get('request').user
+
+#         if curr_user.groups.filter(name="boss").exists() or curr_user.groups.filter(name="staff").exists():
+#             if  obj.reservation_type == 'pending':
+#                 return True
+
+#         return False
+
+
+
+#     def get_to_turn(self,obj):
+
+#         curr_user = self.context.get('request').user
+#         if curr_user.groups.filter(name="boss").exists() or curr_user.groups.filter(name="StoreKeeper").exists():
+#             if (obj.reservation_type == 'sent'or obj.reservation_type == 'returned from workshops' ) and not obj.newOwner:
+#                 return True
+#             else :
+#                 return False
+
+
+#         if obj.user and obj.user.store  and obj.reservation_type :
+#             if obj.newOwner:
+#                 return False
+#             # if obj.reservation_type == 'sent':
+#             #     print('get_to_turn')
+#             #     print(obj.user.username)
+#             #     print(curr_user.username)
+#             #     print(obj.user.store.name)
+#             #     print(curr_user.store.name)
+
+#             if obj.reservation_type == 'sent'or obj.reservation_type == 'returned from workshops':
+#                 if curr_user.groups.filter(name="boss").exists():
+#                    return True
+#                 if obj.workshop and obj.workshop.manager:
+#                     if obj.workshop.manager==curr_user :
+#                         return True
+#                     else :
+#                         return False
+#             if  curr_user.store==obj.user.store and (obj.reservation_type == 'sent' or obj.reservation_type == 'returned from workshops') :
+#                return True
+#         return False
+
+#     def get_to_cancle_confirm_turning(self,obj):
+#         curr_user = self.context.get('request').user
+
+
+#         if obj.user and obj.user.store  and obj.reservation_type and obj.newOwner :
+
+#             if curr_user.groups.filter(name="boss").exists() :
+#                return True
+#             if obj.workshop and obj.workshop.manager:
+#                 if obj.workshop.manager==curr_user :
+#                     return True
+#                 else :
+#                     return False
+
+
+#             if   obj.newOwner.store == curr_user.store and ( obj.reservation_type == 'sent' or obj.reservation_type == 'returned from workshops') :
+#                return True
+#         return False
+
+
+
+
+#     def get_name(self, obj):
+#         if obj.product_class.product:
+#             return obj.product_class.product.name
+#         else:
+#             return None
+#     def get_workshop_name(self, obj):
+#         if obj.workshop:
+#             return obj.workshop.name
+#         else:
+#             return None
+#     def get_workshop_isworking(self, obj):
+#         if obj.workshop:
+#             return obj.workshop.is_working
+#         else:
+#             return None
+#     def get_description(self, obj):
+#         if obj.product_class.product:
+#             return obj.product_class.product.description
+#         else:
+#             return None
+#     def get_reposotory(self, obj):
+#         if obj.product_class.product.reposotory:
+#             return obj.product_class.product.reposotory.name
+#         else:
+#             return None
+
+#     def get_type(self, obj):
+#         if obj.product_class:
+#             return obj.product_class.type
+#         else:
+#             return None
+#     def get_username(self, obj):
+#         if obj.user:
+#             return obj.user.username
+#         else:
+#             return None
+#     def get_newusername(self, obj):
+#         if obj.newOwner:
+#             return obj.newOwner.username
+#         else:
+#             return None
+
+
+
 class ReservationsSerializer(serializers.ModelSerializer):
-    description = serializers.SerializerMethodField()
-    name = serializers.SerializerMethodField()
-    type = serializers.SerializerMethodField()
-    username = serializers.SerializerMethodField()
-    newusername = serializers.SerializerMethodField()
-    reposotory = serializers.SerializerMethodField()
-    workshop_name = serializers.SerializerMethodField()
-    workshop_isworking=serializers.SerializerMethodField()
-    to_send_to_workshop=serializers.SerializerMethodField()
-    to_send=serializers.SerializerMethodField()
-    to_not_sending=serializers.SerializerMethodField()
-    to_confirm=serializers.SerializerMethodField()
-    to_turn=serializers.SerializerMethodField()
-    to_cancle_confirm_turning=serializers.SerializerMethodField()
-    to_cancle_reserve=serializers.SerializerMethodField()
-    to_edit_amount_in_reservation=serializers.SerializerMethodField()
+    # 5. Serializer Cleanup: Replace simple methods with ReadOnlyFields 
+    name = serializers.ReadOnlyField(source='product_class.product.name')
+    description = serializers.ReadOnlyField(source='product_class.product.description')
+    type = serializers.ReadOnlyField(source='product_class.type')
+    username = serializers.ReadOnlyField(source='user.username')
+    newusername = serializers.ReadOnlyField(source='newOwner.username')
+    reposotory = serializers.ReadOnlyField(source='product_class.product.reposotory.name')
+    workshop_name = serializers.ReadOnlyField(source='workshop.name')
+    workshop_isworking = serializers.ReadOnlyField(source='workshop.is_working')
+
+    # Complex logic properties
+    to_send_to_workshop = serializers.SerializerMethodField()
+    to_send = serializers.SerializerMethodField()
+    to_not_sending = serializers.SerializerMethodField()
+    to_confirm = serializers.SerializerMethodField()
+    to_turn = serializers.SerializerMethodField()
+    to_cancle_confirm_turning = serializers.SerializerMethodField()
+    to_cancle_reserve = serializers.SerializerMethodField()
+    to_edit_amount_in_reservation = serializers.SerializerMethodField()
+
     class Meta:
         model = Reservations
-        fields = ('name' #changer or reader
-                  ,'createAt','amount','description','type','username',
-                  'reservation_type','id','newusername','reposotory','workshop_name','workshop_isworking'
-                    ,'used_in_workshop','to_send_to_workshop',
-                    'to_send','to_not_sending','to_confirm','to_turn','to_cancle_confirm_turning','to_cancle_reserve','to_edit_amount_in_reservation'
-                  )
+        fields = (
+            'name', 'createAt', 'amount', 'description', 'type', 'username',
+            'reservation_type', 'id', 'newusername', 'reposotory', 'workshop_name',
+            'workshop_isworking', 'used_in_workshop', 'to_send_to_workshop',
+            'to_send', 'to_not_sending', 'to_confirm', 'to_turn',
+            'to_cancle_confirm_turning', 'to_cancle_reserve', 'to_edit_amount_in_reservation'
+        )
 
-    def get_to_edit_amount_in_reservation(self,obj):
+    # Note: All group checks are replaced by self.context.get()
+    
+    def get_to_edit_amount_in_reservation(self, obj):
         curr_user = self.context.get('request').user
-        if obj.user and obj.user.store  and obj.reservation_type :
-            if curr_user.store==obj.user.store and   obj.reservation_type == 'pending':
+        is_boss = self.context.get('is_boss', False)
+        is_staff = self.context.get('is_staff', False)
+
+        if obj.user and obj.user.store and obj.reservation_type:
+            if curr_user.store == obj.user.store and obj.reservation_type == 'pending':
                 return True
-            if curr_user.groups.filter(name="boss").exists() or curr_user.groups.filter(name="staff").exists():
-                if obj.reservation_type == 'pending' :
-                    return True
-
+            if (is_boss or is_staff) and obj.reservation_type == 'pending':
+                return True
             if obj.workshop and obj.workshop.manager:
-                if obj.workshop.manager==curr_user and obj.reservation_type == 'pending' :
+                if obj.workshop.manager == curr_user and obj.reservation_type == 'pending':
                     return True
-
         return False
 
-
-    def get_to_cancle_reserve(self,obj):
+    def get_to_cancle_reserve(self, obj):
         curr_user = self.context.get('request').user
-        if obj.user and obj.user.store  and obj.reservation_type :
+        if obj.user and obj.user.store and obj.reservation_type:
             if obj.workshop:
                 return False
-
-            if curr_user.store==obj.user.store and   obj.reservation_type == 'pending':
+            if curr_user.store == obj.user.store and obj.reservation_type == 'pending':
                return True
         return False
 
-    def get_to_send(self,obj):
+    def get_to_send(self, obj):
         curr_user = self.context.get('request').user
+        is_staff = self.context.get('is_staff', False)
+        is_store_keeper = self.context.get('is_store_keeper', False)
 
-        #print('get_to_send')
-        if curr_user.groups.filter(name="staff").exists() or curr_user.groups.filter(name="StoreKeeper").exists():
-            if  obj.reservation_type == 'pending' and not obj.workshop:
+        if is_staff or is_store_keeper:
+            if obj.reservation_type == 'pending' and not obj.workshop:
                 return True
-            else :
+            else:
                 return False
-        #print(obj.amount)
-        if obj.user and obj.user.store  and obj.reservation_type  and obj.product_class and obj.product_class.product and obj.product_class.product.reposotory :
-            # if  obj.workshop:
-            #     return False
-            #print(1)
-            if curr_user.groups.filter(name="staff").exists() and  obj.reservation_type == 'pending':
-                #print(2)
 
+        if (obj.user and obj.user.store and obj.reservation_type and 
+            obj.product_class and obj.product_class.product and obj.product_class.product.reposotory):
+            
+            if is_staff and obj.reservation_type == 'pending':
                 return True
-            if  obj.product_class.product.reposotory.name == curr_user.store.name and obj.reservation_type == 'pending':
-                #print(3)
+            if obj.product_class.product.reposotory.name == curr_user.store.name and obj.reservation_type == 'pending':
                 return True
-
         return False
 
-    def get_to_send_to_workshop(self,obj):
-        curr_user = self.context.get('request').user
-        #print('get_to_send_to_workshop')
-        #print(obj.amount)
+    def get_to_send_to_workshop(self, obj):
+        is_staff = self.context.get('is_staff', False)
+        is_store_keeper = self.context.get('is_store_keeper', False)
+
         if not obj.workshop:
-           
-            #print('no workshop')
-            return False
-        if obj.amount ==2:
-                print('here')
-        amount_available=Amounts.objects.filter(is_available='متاح',product_class=obj.product_class).first()
-        amount_requested=Amounts.objects.filter(is_available='مطلوب للشراء',product_class=obj.product_class).first()
-
-        # if not (amount_available and amount_available.amount >= obj.amount):
-            #print('not enough amount')
-            # if obj.amount ==2 and obj.workshop.name=="fffffffffffff":
-            #     print('not enough amount')
-            #     print(amount_available.amount )
-            #     print(obj.amount)
-            # return False
-        if not amount_available :
-            return False
-        if amount_requested and amount_requested.amount >0 and amount_available.amount < obj.amount:
             return False
 
-        if obj.user and obj.user.store  and obj.reservation_type :
-            if (curr_user.groups.filter(name="staff").exists() or curr_user.groups.filter(name="StoreKeeper").exists() ) and  obj.reservation_type == 'pending':
-                #print(4)
+        # Optimized Amount Fetching: Avoids hitting DB inside serializer
+        amounts_dict = self.context.get('amounts_dict', {})
+        obj_amounts = amounts_dict.get(obj.product_class_id, {})
+        amount_available = obj_amounts.get('متاح')
+        amount_requested = obj_amounts.get('مطلوب للشراء')
+
+        if not amount_available:
+            return False
+            
+        if amount_requested and amount_requested > 0 and amount_available < obj.amount:
+            return False
+
+        if obj.user and obj.user.store and obj.reservation_type:
+            if (is_staff or is_store_keeper) and obj.reservation_type == 'pending':
                 return True
-
-            if  obj.reservation_type == 'requested for workshops':
-               #print(5)
+            if obj.reservation_type == 'requested for workshops':
                return True
-        if obj.amount ==2 and obj.workshop.name=="fffffffffffff":
-                print('end of function')
-
-
+               
         return False
 
-    def get_to_confirm(self,obj):
+    def get_to_confirm(self, obj):
         curr_user = self.context.get('request').user
+        is_boss = self.context.get('is_boss', False)
+        is_store_keeper = self.context.get('is_store_keeper', False)
 
-
-        if obj.user and obj.user.store  and obj.reservation_type :
+        if obj.user and obj.user.store and obj.reservation_type:
             if obj.newOwner:
                 return False
             if obj.reservation_type == 'sent':
-                if curr_user.groups.filter(name="boss").exists() or curr_user.groups.filter(name="StoreKeeper").exists():
+                if is_boss or is_store_keeper:
                    return True
                 if obj.workshop and obj.workshop.manager:
-                    if obj.workshop.manager==curr_user :
+                    if obj.workshop.manager == curr_user:
                         return True
-                    else :
+                    else:
                         return False
 
-            if  curr_user.store==obj.user.store and (obj.reservation_type == 'sent' or obj.reservation_type == 'returned from workshops') :
+            if curr_user.store == obj.user.store and (obj.reservation_type == 'sent' or obj.reservation_type == 'returned from workshops'):
                return True
         return False
 
-    def get_to_not_sending(self,obj):
-        curr_user = self.context.get('request').user
+    def get_to_not_sending(self, obj):
+        is_boss = self.context.get('is_boss', False)
+        is_staff = self.context.get('is_staff', False)
 
-        if curr_user.groups.filter(name="boss").exists() or curr_user.groups.filter(name="staff").exists():
-            if  obj.reservation_type == 'pending':
+        if is_boss or is_staff:
+            if obj.reservation_type == 'pending':
                 return True
-
         return False
 
-
-
-    def get_to_turn(self,obj):
-
+    def get_to_turn(self, obj):
         curr_user = self.context.get('request').user
-        if curr_user.groups.filter(name="boss").exists() or curr_user.groups.filter(name="StoreKeeper").exists():
-            if (obj.reservation_type == 'sent'or obj.reservation_type == 'returned from workshops' ) and not obj.newOwner:
+        is_boss = self.context.get('is_boss', False)
+        is_store_keeper = self.context.get('is_store_keeper', False)
+
+        if is_boss or is_store_keeper:
+            if obj.reservation_type in ['sent', 'returned from workshops'] and not obj.newOwner:
                 return True
-            else :
+            else:
                 return False
 
-
-        if obj.user and obj.user.store  and obj.reservation_type :
+        if obj.user and obj.user.store and obj.reservation_type:
             if obj.newOwner:
                 return False
-            # if obj.reservation_type == 'sent':
-            #     print('get_to_turn')
-            #     print(obj.user.username)
-            #     print(curr_user.username)
-            #     print(obj.user.store.name)
-            #     print(curr_user.store.name)
 
-            if obj.reservation_type == 'sent'or obj.reservation_type == 'returned from workshops':
-                if curr_user.groups.filter(name="boss").exists():
+            if obj.reservation_type in ['sent', 'returned from workshops']:
+                if is_boss:
                    return True
                 if obj.workshop and obj.workshop.manager:
-                    if obj.workshop.manager==curr_user :
+                    if obj.workshop.manager == curr_user:
                         return True
-                    else :
+                    else:
                         return False
-            if  curr_user.store==obj.user.store and (obj.reservation_type == 'sent' or obj.reservation_type == 'returned from workshops') :
+                        
+            if curr_user.store == obj.user.store and (obj.reservation_type == 'sent' or obj.reservation_type == 'returned from workshops'):
                return True
         return False
 
-    def get_to_cancle_confirm_turning(self,obj):
+    def get_to_cancle_confirm_turning(self, obj):
         curr_user = self.context.get('request').user
+        is_boss = self.context.get('is_boss', False)
 
-
-        if obj.user and obj.user.store  and obj.reservation_type and obj.newOwner :
-
-            if curr_user.groups.filter(name="boss").exists() :
+        if obj.user and obj.user.store and obj.reservation_type and obj.newOwner:
+            if is_boss:
                return True
             if obj.workshop and obj.workshop.manager:
-                if obj.workshop.manager==curr_user :
+                if obj.workshop.manager == curr_user:
                     return True
-                else :
+                else:
                     return False
 
-
-            if   obj.newOwner.store == curr_user.store and ( obj.reservation_type == 'sent' or obj.reservation_type == 'returned from workshops') :
+            if obj.newOwner.store == curr_user.store and (obj.reservation_type == 'sent' or obj.reservation_type == 'returned from workshops'):
                return True
         return False
 
-
-
-
-    def get_name(self, obj):
-        if obj.product_class.product:
-            return obj.product_class.product.name
-        else:
-            return None
-    def get_workshop_name(self, obj):
-        if obj.workshop:
-            return obj.workshop.name
-        else:
-            return None
-    def get_workshop_isworking(self, obj):
-        if obj.workshop:
-            return obj.workshop.is_working
-        else:
-            return None
-    def get_description(self, obj):
-        if obj.product_class.product:
-            return obj.product_class.product.description
-        else:
-            return None
-    def get_reposotory(self, obj):
-        if obj.product_class.product.reposotory:
-            return obj.product_class.product.reposotory.name
-        else:
-            return None
-
-    def get_type(self, obj):
-        if obj.product_class:
-            return obj.product_class.type
-        else:
-            return None
-    def get_username(self, obj):
-        if obj.user:
-            return obj.user.username
-        else:
-            return None
-    def get_newusername(self, obj):
-        if obj.newOwner:
-            return obj.newOwner.username
-        else:
-            return None
-
-
-
+        
 
 class ReposotorySerializer(serializers.ModelSerializer):
     class Meta:
