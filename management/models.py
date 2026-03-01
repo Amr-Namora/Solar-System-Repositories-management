@@ -16,8 +16,8 @@ class Reposotory(models.Model):
       ('Yes', 'Yes'),
       ('No', 'No')
     )
-    name = models.CharField(max_length=30,unique=True, default='')
-    location = models.CharField(max_length=30, default='')
+    name = models.CharField(max_length=50,unique=True, default='')
+    location = models.CharField(max_length=100, default='')
     is_working = models.CharField(max_length=5, choices=Yes_No, default='Yes')
 
     def __str__(self):
@@ -26,11 +26,11 @@ class Reposotory(models.Model):
 
 
 class Product(models.Model):
-    name=models.CharField(max_length=30,default='')
+    name=models.CharField(max_length=50,default='')
     description=models.TextField(default='')
-    total_available=models.IntegerField(default=0)
-    total_on_way=models.IntegerField(default=0)
-    total_requested=models.IntegerField(default=0)
+    total_available=models.BigIntegerField(default=0)
+    total_on_way=models.BigIntegerField(default=0)
+    total_requested=models.BigIntegerField(default=0)
 
     reposotory=models.ForeignKey(Reposotory,on_delete=PROTECT,null=True,blank=False)
     def __str__(self):
@@ -62,7 +62,7 @@ class Amounts(models.Model):
         ('workshop','workshop'),
     )
     product_class=models.ForeignKey(Class,related_name='classs',default='',on_delete=models.PROTECT)
-    amount=models.IntegerField(default=0)
+    amount=models.BigIntegerField(default=0)
     is_available=models.CharField(max_length=30,choices=types)
     def __str__(self):
         return f"{self.product_class.product.name}, type :{self.product_class.type} , amount:   {self.amount}"
@@ -76,8 +76,8 @@ class Workshop(models.Model):
       ('done', 'done'),
       ('stopped', 'stopped')
     )
-    name = models.CharField(max_length=30,unique=True, default='')
-    location = models.CharField(max_length=30, default='')
+    name = models.CharField(max_length=50,unique=True, default='')
+    location = models.CharField(max_length=100, default='')
     is_working = models.CharField(max_length=30, choices=Yes_No, default='not started yet')
     manager = models.ForeignKey(settings.AUTH_USER_MODEL,null=True, related_name='workshop_manager', on_delete=models.PROTECT)
     createAt = models.DateTimeField(null=True, auto_now_add=True)
@@ -93,7 +93,7 @@ class Bill(models.Model):
       ('done', 'done'),
       ('stopped', 'stopped')
     )
-    client_name = models.CharField(max_length=30,unique=True, default='')
+    client_name = models.CharField(max_length=50,unique=True, default='')
     details = models.TextField(default='')
     is_working = models.CharField(max_length=30, choices=Yes_No, default='not started yet')
     seller = models.ForeignKey(settings.AUTH_USER_MODEL,null=True, related_name='Bill_seller', on_delete=models.PROTECT)
@@ -144,8 +144,8 @@ class  Add_Delete(models.Model):
 
     change_type=models.CharField(max_length=30,choices=change_choices)
     type=models.CharField(max_length=50,null=True,blank=True)
-    name=models.CharField(max_length=30,null=True,blank=True)
-    amount = models.IntegerField(null=True,blank=True)
+    name=models.CharField(max_length=50,null=True,blank=True)
+    amount = models.BigIntegerField(null=True,blank=True)
     details=models.TextField(null=True,blank=True)
     createAt = models.DateTimeField(null=True, auto_now_add=True)
 
@@ -214,7 +214,7 @@ class Reservations(models.Model):
         related_name='reservations2'
     )
     product_class=models.ForeignKey(Class,related_name='reservations',default='',on_delete=models.PROTECT)
-    amount=models.IntegerField(default=0)
+    amount=models.BigIntegerField(default=0)
     createAt = models.DateTimeField(null=True, auto_now_add=True)
     EndAt = models.DateTimeField(null=True, blank=True)
 
@@ -222,6 +222,6 @@ class Reservations(models.Model):
     workshop=models.ForeignKey(Workshop,related_name='workshop_reservations',default='',on_delete=models.PROTECT,null=True,blank=True)
     bill=models.ForeignKey(Bill,related_name='bill_reservations',default='',on_delete=models.PROTECT,null=True,blank=True)
 
-    used_in_workshop=models.IntegerField(default=-1,null=True,blank=True)
+    used_in_workshop=models.BigIntegerField(default=-1,null=True,blank=True)
     def __str__(self):
         return f"{self.product_class.product.name}, type :{self.product_class.type} , amount:   {self.amount} is reserved"
