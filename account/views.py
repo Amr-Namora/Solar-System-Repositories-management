@@ -104,8 +104,11 @@ class UserSignUpView(APIView):
             repository=None
             if user_data['role'] == 'مشرف الورشة':
                 store = Store.objects.get(name='الورشات')
+                repository = Reposotory.objects.get(name='الورشات')
+
             elif user_data['role'] in ['مشرف', 'بائع']:
                 store = Store.objects.get(name=store_name)
+                repository = Reposotory.objects.get(name=store_name)
             elif user_data['role'] ==  'امين مستودع':
                 repository = Reposotory.objects.get(name=repository_name)
         except Store.DoesNotExist:
@@ -359,7 +362,10 @@ class UserUpdateView(APIView):
             if new_store_name:
                 try:
                     store = Store.objects.get(name=new_store_name)
+                    repository = Reposotory.objects.get(name=new_store_name)
                     user.store = store
+                    user.repository = repository
+                    user.save()
                 except Store.DoesNotExist:
                     return Response({'error': 'المتجر غير موجود'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -391,12 +397,15 @@ class UserUpdateView(APIView):
                 elif new_role == 'مشرف الورشة':
                     user.groups.add(workshop_group)
                     user.store = Store.objects.get(name='الورشات')
+                    user.repository = Reposotory.objects.get(name='الورشات')
+                    user.save()
                 elif new_role == 'امين مستودع':
                     user.groups.add(reposotory_group)
                     if new_repository_name:
                         try:
                             repository = Reposotory.objects.get(name=new_repository_name)
                             user.repository = repository
+                            user.save()
                         except Reposotory.DoesNotExist:
                             return Response({'error': 'المستودع غير موجود'}, status=status.HTTP_400_BAD_REQUEST)
             

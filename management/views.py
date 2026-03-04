@@ -635,22 +635,25 @@ def newreservation(request):
             Q(user=user) |
             Q(newOwner=user) |
             Q(product_class__product__reposotory__name=user.repository.name) |
-            Q(workshop__manager=user) |
             Q(user__store__name=user.repository.name)
         ).order_by('-createAt')
     else:
+       
         details = Reservations.objects.filter(
-            Q(user=user) |
-            Q(newOwner=user) |
-            Q(product_class__product__reposotory__name=user.store.name) |
-            Q(workshop__manager=user) |
-            Q(user__store__name=user.store.name)
-        ).order_by('-createAt')
-
+                Q(user=user) |
+                Q(newOwner=user) |
+                Q(product_class__product__reposotory__name=user.store.name) |
+                Q(workshop__manager=user) |
+                Q(user__store__name=user.store.name)
+            ).order_by('-createAt')
     # Apply Filters
     if data.get('reposotory_id'):
-        rep = Reposotory.objects.get(id=data['reposotory_id'])    
-        details = details.filter(Q(user__store__name=rep.name) | Q(user__repository__name=rep.name))
+        rep = Reposotory.objects.get(id=data['reposotory_id'])   
+        if is_store_keeper:
+            details = details.filter( user__repository__name=rep.name)
+
+        else :     
+            details = details.filter(user__store__name=rep.name)
 
     if data.get('workshop_id'):
         details = details.filter(workshop__id=data['workshop_id'])
