@@ -10,6 +10,8 @@ from rest_framework.response import Response
 from django.contrib.auth import get_user_model
 from sqlparse.engine.grouping import group
 from django.db.models import Q
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
 
 from .models import CustomUser,Store
 from .serializers import SingUpSerializerUser, userSerializer, StoresSerializer
@@ -450,4 +452,8 @@ def profile(request):
 
     })
 
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def ping(request):
+    return Response({"status": "awake"}, status=200)
 

@@ -11,7 +11,7 @@ urlpatterns = [
     path('users_workshops/', views.users_workshops, name='users_workshops'),
     path('profile/', views.profile, name='profile'),
     path('users_no_boss/', views.users_no_boss_no_workshop_managers, name='users_no_boss_no_workshop_managers'),
-
+    path('ping/', views.ping, name='ping'),
     path('stores/', views.stores, name='stores'),
     path('addStores/', views.addStores, name='addStores'),
     path('logout/', views.logout_view.as_view(),name='logout'),

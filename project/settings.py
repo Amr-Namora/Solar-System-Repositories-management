@@ -18,7 +18,7 @@ ALLOWED_HOSTS = [
     '127.0.0.1',
     'localhost',
     'solar-system-repositories-management-1h39.onrender.com',
-    '192.168.96.68',
+    '192.168.243.212',
     config('RENDER_EXTERNAL_HOSTNAME', default='')
 ]
 
@@ -71,8 +71,8 @@ CORS_ALLOWED_ORIGINS = [
     'http://localhost:8081',
     'http://192.168.1.101:8000',
     'http://192.168.1.101:8081',
-    'http://192.168.96.68:8000',
-    'http://192.168.96.68:8081',
+    'http://192.168.243.212:8000',
+    'http://192.168.243.212:8081',
 ]
 
 CSRF_TRUSTED_ORIGINS = [
@@ -82,8 +82,8 @@ CSRF_TRUSTED_ORIGINS = [
     'http://localhost:8081',
     'http://192.168.1.101:8000',
     'http://192.168.1.101:8081',
-    'http://192.168.96.68:8000',
-    'http://192.168.96.68:8081',
+    'http://192.168.243.212:8000',
+    'http://192.168.243.212:8081',
 ]
 
 # ---------------------------------------------------------
