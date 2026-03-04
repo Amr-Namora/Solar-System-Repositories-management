@@ -85,7 +85,7 @@ def home(request):
                 classes__amounts__amount__gt=0,
                 classes__amounts__is_available__in=['قيد الوصول', 'متاح'],
                 reposotory__in=allowed_repos  # Use __in lookup with the queryset
-            ).exclude(reposotory__name=request.user.store.name).distinct()
+            ).exclude(reposotory__name=request.user.repository.name).distinct()
 
     # 3. apply your existing filter
     filtered_qs = home_filter(request.GET, queryset=base_qs).qs
@@ -106,18 +106,18 @@ def home(request):
             unique.append(item)
 
     user=request.user
-    store=user.store
-    store_na = None
+    reposotory=user.repository
+    repository_name = None
 
-    if store and store.name:
-        store_na=store.name
-    # print(user.store_na)
+    if reposotory and reposotory.name:
+        repository_name=reposotory.name
+    # print(user.repository_name)
     # 6. return deduped list
     return Response({
 
         'serialize': unique,
         'is_manager': is_manager,
-        'store':store_na
+        'store':repository_name
     }, status=HTTP_200_OK)
 
 
@@ -148,8 +148,7 @@ def home_for_reposotory_workshop(request):
             unique.append(item)
 
     user=request.user
-    store=user.store
-    store_na = None
+   
 
     
     # print(user.store_na)
@@ -188,17 +187,17 @@ def myStore(request):
             unique.append(item)
 
     user=request.user
-    store=user.store
-    store_na = None
+    reposotory=user.repository
+    repository_name = None
 
-    if store and store.name:
-        store_na=store.name
-    # print(user.store_na)
+    if reposotory and reposotory.name:
+        repository_name=reposotory.name
+    # print(user.repository_name)
     # 6. return deduped list
     return Response({
 
         'serialize': unique,
-        'store':store_na
+        'store':repository_name
     }, status=HTTP_200_OK)
 
 
@@ -235,18 +234,18 @@ def homeRead(request):
             unique.append(item)
 
     user=request.user
-    store=user.store
-    store_na = None
+    reposotory=user.repository
+    repository_name = None
 
-    if store and store.name:
-        store_na=store.name
-    # print(user.store_na)
+    if reposotory and reposotory.name:
+        repository_name=reposotory.name
+    # print(user.repository_name)
     # 6. return deduped list
     return Response({
 
         'serialize': unique,
         'is_manager': is_manager,
-        'store':store_na
+        'store':repository_name
     }, status=HTTP_200_OK)
 
 
@@ -273,7 +272,7 @@ def product_types(request):
     else:
         rep = product.reposotory.name
         print("rep ",rep)
-        my_rep = request.user.store.name
+        my_rep = request.user.repository.name
         print("my_rep ",my_rep)
         print( my_rep == rep)
         if is_manager or my_rep == rep:       
@@ -392,7 +391,7 @@ def product_details(request):
         class_obj=Class.objects.get(id=user_data['class_id'])
         print('here product_details ',class_obj)
         rep=class_obj.product.reposotory.name
-        my_rep=request.user.store.name
+        my_rep=request.user.repository.name
         if is_manager or my_rep==rep:
             details = Amounts.objects.filter(product_class=class_obj )
         else:
@@ -635,16 +634,16 @@ def newreservation(request):
             Q(user=user) |
             Q(newOwner=user) |
             Q(product_class__product__reposotory__name=user.repository.name) |
-            Q(user__store__name=user.repository.name)
+            Q(user__repository__name=user.repository.name)
         ).order_by('-createAt')
     else:
        
         details = Reservations.objects.filter(
                 Q(user=user) |
                 Q(newOwner=user) |
-                Q(product_class__product__reposotory__name=user.store.name) |
+                Q(product_class__product__reposotory__name=user.repository.name) |
                 Q(workshop__manager=user) |
-                Q(user__store__name=user.store.name)
+                Q(user__repository__name=user.repository.name)
             ).order_by('-createAt')
     # Apply Filters
     if data.get('reposotory_id'):
@@ -653,7 +652,7 @@ def newreservation(request):
             details = details.filter( user__repository__name=rep.name)
 
         else :     
-            details = details.filter(user__store__name=rep.name)
+            details = details.filter(user__repository__name=rep.name)
 
     if data.get('workshop_id'):
         details = details.filter(workshop__id=data['workshop_id'])
@@ -777,8 +776,8 @@ def add_product(request):
     if is_manager and not data['reposotory']:  # Validate input to avoid NULL errors
         return Response({"error":"قم باختيار المستودع اولا"})
     elif not data['reposotory']:
-        print('here add_product',request.user.store.name)
-        reposotory=Reposotory.objects.filter(name=request.user.store.name).first()
+        print('here add_product',request.user.repository.name)
+        reposotory=Reposotory.objects.filter(name=request.user.repository.name).first()
     else :
         reposotory=Reposotory.objects.get(name=data['reposotory'])
 
@@ -1781,7 +1780,7 @@ def confirm_requested_reservation(request):
             message=f' لقد تم اعادة ما تبقى من الورشة بكمية {amountt} قطعة من المنتج {class_obj.type}  '
         )
         old_rep_obj=reservation.product_class.product.reposotory
-        new_rep_obj=Reposotory.objects.get(name=user.store.name)
+        new_rep_obj=Reposotory.objects.get(name=user.repository.name)
 
         if not Product.objects.filter(name=data['name'],reposotory=new_rep_obj).exists():
             pro_obj=Product.objects.create(name=data['name'], reposotory=new_rep_obj)
@@ -1868,8 +1867,8 @@ def reposotory(request):
         # repositories=Reposotory.objects.filter(is_working='Yes').exclude(name='الورشات')
         repositories = user.allowed_repositories.filter(is_working='Yes').exclude(name='الورشات')
 
-    elif  Reposotory.objects.filter(is_working='Yes',name=request.user.store.name).exists():
-        repositories = user.allowed_repositories.filter(is_working='Yes').exclude(Q(name=request.user.store.name)|Q(name='الورشات'))
+    elif  Reposotory.objects.filter(is_working='Yes',name=request.user.repository.name).exists():
+        repositories = user.allowed_repositories.filter(is_working='Yes').exclude(Q(name=request.user.repository.name)|Q(name='الورشات'))
     else:
         repositories = user.allowed_repositories.filter(is_working='Yes').exclude(name='الورشات')
 
@@ -1977,7 +1976,7 @@ def turnResevation(request):
     
     if data['new_username']:
         user=User.objects.get(username=data['new_username'])
-        if  user.store == reservauion.user.store:
+        if  user.repository == reservauion.user.repository:
             return Response ({'error':'الحجز موجود بالفعل في متجر هذا المستخدم'},status=status.HTTP_400_BAD_REQUEST)        
         
     if data['new_workshop_name']:
@@ -3194,7 +3193,7 @@ def home_for_reposotory_bill(request):
     else:
         base_qs= Product.objects.filter(
             classes__amounts__is_available ='متاح',
-            reposotory__name=user.store.name
+            reposotory__name=user.repository.name
         )
     filtered_qs = home_filter(request.GET, queryset=base_qs).qs
 
@@ -3213,9 +3212,7 @@ def home_for_reposotory_bill(request):
             seen.add(key)
             unique.append(item)
 
-    user=request.user
-    store=user.store
-    store_na = None
+   
 
     
     # print(user.store_na)
@@ -3234,7 +3231,7 @@ def reposotories_for_bill(request):
     if is_manager:
         reposotories_for_bill=Reposotory.objects.filter(is_working='Yes').exclude(name='الورشات')
     else:
-        reposotories_for_bill=Reposotory.objects.filter(name=user.store.name,is_working='Yes')
+        reposotories_for_bill=Reposotory.objects.filter(name=user.repository.name,is_working='Yes')
 
     serializer=ReposotorySerializer(reposotories_for_bill,many=True)
 

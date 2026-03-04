@@ -51,7 +51,9 @@ def current_user(request):
         'role': role,
         
         'store_name': user.store.name if user.store else None,
+        'repository_name': user.repository.name if user.repository else None,
     })
+
 User = get_user_model()
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -457,7 +459,7 @@ def profile(request):
         'username': request.user.username,
         'is_staff': request.user.is_staff,
         'is_active': request.user.is_active,
-        'store': request.user.store.name if request.user.store else None,
+        'store': request.user.repository.name if request.user.repository else None,
 
     })
 
