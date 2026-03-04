@@ -165,33 +165,86 @@ class ReservationsSerializer(serializers.ModelSerializer):
                 return True
         return False
 
-    def get_to_send_to_workshop(self, obj):
+    # def get_to_send_to_workshop(self, obj):
+        return True
         is_staff = self.context.get('is_staff', False)
         is_store_keeper = self.context.get('is_store_keeper', False)
 
-        if not obj.workshop:
+        if not obj.workshop or not obj.product_class_id:
             return False
 
-        # Optimized Amount Fetching: Avoids hitting DB inside serializer
+        # Get the pre-calculated dictionary from context
         amounts_dict = self.context.get('amounts_dict', {})
-        obj_amounts = amounts_dict.get(obj.product_class_id, {})
-        amount_available = obj_amounts.get('متاح')
-        amount_requested = obj_amounts.get('مطلوب للشراء')
+        pc_amounts = amounts_dict.get(obj.product_class_id, {})
 
-        if not amount_available:
+        # Extract the values safely
+        amount_available = pc_amounts.get('متاح', 0)
+        amount_requested = pc_amounts.get('مطلوب للشراء', 0)
+
+        # Logic Implementation
+        if amount_available == 0 and amount_requested == 0:
             return False
-            
-        if amount_requested and amount_requested > 0 and amount_available < obj.amount:
+
+        if amount_requested > 0 and amount_available < obj.amount:
             return False
 
         if obj.user and obj.user.store and obj.reservation_type:
             if (is_staff or is_store_keeper) and obj.reservation_type == 'pending':
                 return True
             if obj.reservation_type == 'requested for workshops':
-               return True
-               
+                return True
+
         return False
 
+    def get_to_send_to_workshop(self,obj):
+        curr_user = self.context.get('request').user
+        #print('get_to_send_to_workshop')
+        #print(obj.amount)
+        if not obj.workshop:
+           
+            #print('no workshop')
+            return False
+
+        amount_available=Amounts.objects.filter(is_available='متاح',product_class=obj.product_class).first()
+        amount_requested=Amounts.objects.filter(is_available='مطلوب للشراء',product_class=obj.product_class).first()
+
+        # if not (amount_available and amount_available.amount >= obj.amount):
+            #print('not enough amount')
+            # if obj.amount ==2 and obj.workshop.name=="fffffffffffff":
+            #     print('not enough amount')
+            #     print(amount_available.amount )
+            #     print(obj.amount)
+            # return False
+        if not amount_available :
+            if obj.id==510:
+                print('510 1')
+            if obj.id==511:
+                print('511 1')    
+            return False
+        if obj.reservation_type == 'requested for workshops' and amount_requested and amount_requested.amount >0 and amount_available.amount < obj.amount:
+            if obj.id==510:
+                print('510 2')
+            if obj.id==511:
+                print('511 2')   
+            return False
+
+        if obj.user and obj.user.store  and obj.reservation_type :
+            if (curr_user.groups.filter(name="staff").exists() or curr_user.groups.filter(name="StoreKeeper").exists() ) and  obj.reservation_type == 'pending':
+                #print(4)
+                return True
+
+            if  obj.reservation_type == 'requested for workshops':
+               #print(5)
+               return True
+        if obj.amount ==2 and obj.workshop.name=="fffffffffffff":
+                print('end of function')
+
+        if obj.id==510:
+                print('510 3')
+        if obj.id==511:
+                print('511 3')   
+        return False
+ 
     def get_to_confirm(self, obj):
         curr_user = self.context.get('request').user
         is_boss = self.context.get('is_boss', False)

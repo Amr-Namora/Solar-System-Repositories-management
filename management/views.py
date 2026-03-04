@@ -72,8 +72,8 @@ def home(request):
         # base_qs = Product.objects.all()
         else:
             base_qs= Product.objects.filter(reposotory=reposotory,
-                productt__classs__amount__gt=0,
-                productt__classs__is_available__in=['قيد الوصول', 'متاح']
+                classes__amounts__amount__gt=0,
+                classes__amounts__is_available__in=['قيد الوصول', 'متاح']
             ).distinct()
     else :
         if is_manager or is_store_keeper:
@@ -82,8 +82,8 @@ def home(request):
         else:
             allowed_repos = request.user.allowed_repositories.all()
             base_qs= Product.objects.filter(
-                productt__classs__amount__gt=0,
-                productt__classs__is_available__in=['قيد الوصول', 'متاح'],
+                classes__amounts__amount__gt=0,
+                classes__amounts__is_available__in=['قيد الوصول', 'متاح'],
                 reposotory__in=allowed_repos  # Use __in lookup with the queryset
             ).exclude(reposotory__name=request.user.store.name).distinct()
 
@@ -128,7 +128,7 @@ def home_for_reposotory_workshop(request):
 
     
     base_qs= Product.objects.filter(
-            productt__classs__is_available ='متاح',reposotory__name__in=['الرئيسي','المرجة']
+            classes__amounts__is_available ='متاح',reposotory__name__in=['الرئيسي','المرجة']
         )
     filtered_qs = home_filter(request.GET, queryset=base_qs).qs
 
@@ -212,8 +212,8 @@ def homeRead(request):
         # base_qs = Product.objects.all()
     else:
         base_qs= Product.objects.filter(
-            productt__classs__amount__gt=0,
-            productt__classs__is_available__in=['قيد الوصول', 'متاح']
+            classes__amounts__amount__gt=0,
+            classes__amounts__is_available__in=['قيد الوصول', 'متاح']
         ).distinct()
 
     # 3. apply your existing filter
@@ -666,7 +666,7 @@ def newreservation(request):
         'workshop__manager',
         'product_class',
         'product_class__product', 
-        'product_class__product__reposotory'
+        'product_class__product__reposotory',
     )
 
     # 3. Aggregation: Replace Python loop with Database aggregation
@@ -683,22 +683,30 @@ def newreservation(request):
     )
 
     # 4. Handle hidden N+1 inside get_to_send_to_workshop (bulk fetch Amounts instead of inside Serializer)
-    product_class_ids = [d.product_class_id for d in details if d.product_class_id]
-    amounts = Amounts.objects.filter(product_class_id__in=product_class_ids)
-    amounts_dict = {}
-    for amt in amounts:
-        if amt.product_class_id not in amounts_dict:
-            amounts_dict[amt.product_class_id] = {}
-        amounts_dict[amt.product_class_id][amt.is_available] = amt.amount
-
+    # product_class_ids = [d.product_class_id for d in details if d.product_class_id]
+    # amounts = Amounts.objects.filter(product_class_id__in=product_class_ids)
+    # amounts_dict = {}
+    # for amt in amounts:
+    #     if amt.product_class_id not in amounts_dict:
+    #         amounts_dict[amt.product_class_id] = {}
+    #     amounts_dict[amt.product_class_id][amt.is_available] = amt.amount
+    product_class_ids = details.values_list('product_class_id', flat=True).distinct()
+    amounts_qs = Amounts.objects.filter(product_class_id__in=product_class_ids)
     # Prepare Context
+    amounts_dict = {}
+    for amt in amounts_qs:
+        pc_id = amt.product_class_id
+        if pc_id not in amounts_dict:
+            amounts_dict[pc_id] = {}
+        amounts_dict[pc_id][amt.is_available] = amt.amount
     context = {
         'request': request,
         'is_staff': is_staff,
         'is_store_keeper': is_store_keeper,
         'is_workshop_manager': is_workshop_manager,
         'is_boss': is_boss,
-        'amounts_dict': amounts_dict,
+        'details': details,
+        'amounts_dict': amounts_dict, # Key addition
     }
 
     serializer = ReservationsSerializer(details, many=True, context=context)
@@ -1406,7 +1414,11 @@ def confirm_reservation(request):
     }
     print("here confirm_reservation", data)
     reservation = Reservations.objects.get(id=data['Reservation_id'])
-    res_own=reservation.user
+    if reservation.workshop:
+        res_own=reservation.workshop.manager
+    else:
+        res_own=reservation.user
+    
     class_obj = reservation.product_class
     data['type'] = class_obj.type
     data['name'] = class_obj.product.name
@@ -1460,7 +1472,7 @@ def confirm_reservation(request):
         )
         Notification.objects.create(
             user=res_own,
-            message=f' لقد تم تاكيد حجزك بكمية {amountt} قطعة من المنتج {amount.product_class.type}  '
+            message=f' لقد تم تاكيد حجز {res_own.username} بكمية {amountt} قطعة من المنتج {amount.product_class.type}  '
         )
         old_rep_obj=reservation.product_class.product.reposotory
         new_rep_obj=Reposotory.objects.get(name=res_own.store.name)
@@ -1704,6 +1716,7 @@ def send_requested_reservation(request):
 
 @api_view(['POST'])
 def confirm_requested_reservation(request):
+    # استلام ما تبقى من ورشة عندما تم اعادة ما تبقى من ورشة الى مستودع
     data = {
 
         'Reservation_id': request.data.get('Reservation_id'),
@@ -2164,6 +2177,7 @@ def addClassToWorkshop(request):
         if data['amount'] is None:
             return Response({'error':'data you entered is not enough'})
         if class_obj.product.reposotory !=reposotory:
+            print('class_obj.product.reposotory',class_obj.product.reposotory)
             return Response ({'error':'المنتج الذي طلبته موجود في المستودع الاخر'},status=HTTP_404_NOT_FOUND)
        
         amount=int(data['amount'])
@@ -3172,11 +3186,11 @@ def home_for_reposotory_bill(request):
     is_manager = request.user.groups.filter(name="staff").exists()
     if is_manager:
         base_qs= Product.objects.filter(
-            productt__classs__is_available ='متاح'
+            classes__amounts__is_available ='متاح'
         )
     else:
         base_qs= Product.objects.filter(
-            productt__classs__is_available ='متاح',
+            classes__amounts__is_available ='متاح',
             reposotory__name=user.store.name
         )
     filtered_qs = home_filter(request.GET, queryset=base_qs).qs
