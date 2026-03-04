@@ -22,7 +22,7 @@ urlpatterns = [
     path('users/<int:user_id>/toggle-status/', views.UserToggleStatusView.as_view(), name='toggle-user-status'),
 path('users/<int:user_id>/update/', views.UserUpdateView.as_view(), name='update-user'),
 path('UpdatePassword/', views.UpdatePassword, name='UpdatePassword'),
-
+path('my_script',views.my_script,name='my_script'),
     # path('userinfo/', views.current_user,name='user_info'),
     # path('userinfo/update/', views.update_user,name='update_user'),
     # path('forgot_password/', views.forgot_password,name='forgot_password'),

@@ -468,3 +468,14 @@ def profile(request):
 def ping(request):
     return Response({"status": "awake"}, status=200)
 
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def my_script(request):
+    users=CustomUser.objects.all()
+    for user in users:
+        if user.store:
+            user.repository=Reposotory.objects.filter(name=user.store.name).first()
+            user.save()
+    return Response({"status": "script executed"}, status=200)        

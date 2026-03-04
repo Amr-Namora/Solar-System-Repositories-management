@@ -3239,3 +3239,4 @@ def reposotories_for_bill(request):
         'reposotories': serializer.data
 
     })
+
