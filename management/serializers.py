@@ -49,9 +49,10 @@ class AmountsSerializer(serializers.ModelSerializer):
 class AmountsTypeSerializer(serializers.ModelSerializer):
     type = serializers.ReadOnlyField(source='product_class.type', allow_null=True)
     id = serializers.ReadOnlyField(source='product_class.id', allow_null=True)
-    is_working = serializers.ReadOnlyField(source='product_class.active', allow_null=True)
+    # is_working = serializers.ReadOnlyField(source='product_class.active', allow_null=True)
     is_empyt = serializers.SerializerMethodField()
-    
+    is_working = serializers.SerializerMethodField()
+
     available_amount = serializers.SerializerMethodField()
 
     class Meta:
@@ -65,7 +66,8 @@ class AmountsTypeSerializer(serializers.ModelSerializer):
         return None
     def get_is_empyt(self, obj):
         return self.context.get('is_empyt', False)    
-
+    def get_is_working(self, obj):
+        return obj.product_class.active == 'Yes'
 
 class NotificationSerializer(serializers.ModelSerializer):
     class Meta:
