@@ -3,6 +3,7 @@ from .models import Reservations, Product, Amounts, Notification, Class, Add_Del
 
 
 class ProductSerializer(serializers.ModelSerializer):
+    reposotory=serializers.ReadOnlyField(source='reposotory.name', allow_null=True)
     class Meta:
         model = Product
         fields = "__all__"
@@ -129,16 +130,19 @@ class ReservationsSerializer(serializers.ModelSerializer):
         is_store_keeper = self.context.get('is_store_keeper', False)
 
 
+
         if not obj.reservation_type == 'pending':
             return False
         
         if is_staff :
             return True
         
-
-       
-
-
+        if obj.workshop and obj.workshop.manager:
+                if obj.workshop.manager == curr_user:
+                    return True
+                else:
+                    return False
+                
         # the one who asks for the product in the same repository with the cuurent user 
         # the reciever and the current user in the same reposotory or store
         if obj.user.repository == curr_user.repository:
@@ -151,14 +155,18 @@ class ReservationsSerializer(serializers.ModelSerializer):
         is_staff = self.context.get('is_staff', False)
         curr_user = self.context.get('request').user
 
-        if not obj.reservation_type == 'pending':
+        if not (obj.reservation_type == 'pending' or obj.reservation_type == 'requested for workshops'):
             return False
         
         if is_staff :
             return True
         
        
-        
+        if obj.workshop and obj.workshop.manager:
+                if obj.workshop.manager == curr_user:
+                    return True
+                else:
+                    return False
         # if the user is store keeper and if the cuurent user is in the same store or reposotory of the reservation owner, he can cancle the reservation 
         # the reciever and the current user is the same
         if obj.user.repository == curr_user.repository:
@@ -196,51 +204,31 @@ class ReservationsSerializer(serializers.ModelSerializer):
     
     def get_to_send_to_workshop(self,obj):
         curr_user = self.context.get('request').user
+        is_staff = self.context.get('is_staff', False)
         #print('get_to_send_to_workshop')
         #print(obj.amount)
-        if not obj.workshop:
-           
-            #print('no workshop')
+        if not obj.workshop:           
             return False
-
+        if not (obj.reservation_type == 'requested for workshops' or obj.reservation_type == 'pending'):
+            return False
+        
         amount_available=Amounts.objects.filter(is_available='متاح',product_class=obj.product_class).first()
         amount_requested=Amounts.objects.filter(is_available='مطلوب للشراء',product_class=obj.product_class).first()
 
-        # if not (amount_available and amount_available.amount >= obj.amount):
-            #print('not enough amount')
-            # if obj.amount ==2 and obj.workshop.name=="fffffffffffff":
-            #     print('not enough amount')
-            #     print(amount_available.amount )
-            #     print(obj.amount)
-            # return False
-        if not amount_available :
-            if obj.id==510:
-                print('510 1')
-            if obj.id==511:
-                print('511 1')    
+        if not amount_available :   
             return False
         if obj.reservation_type == 'requested for workshops' and amount_requested and amount_requested.amount >0 and amount_available.amount < obj.amount:
-            if obj.id==510:
-                print('510 2')
-            if obj.id==511:
-                print('511 2')   
             return False
 
-        if obj.user and obj.user.repository  and obj.reservation_type :
-            if (curr_user.groups.filter(name="staff").exists() or curr_user.groups.filter(name="StoreKeeper").exists() ) and  obj.reservation_type == 'pending':
-                #print(4)
-                return True
+        if is_staff :
+            return True
+        if obj.user and obj.user.repository   :
 
-            if  obj.reservation_type == 'requested for workshops':
+            if  obj.product_class and obj.product_class.product and obj.product_class.product.reposotory and obj.product_class.product.reposotory == curr_user.repository:
+
                #print(5)
                return True
-        if obj.amount ==2 and obj.workshop.name=="fffffffffffff":
-                print('end of function')
-
-        if obj.id==510:
-                print('510 3')
-        if obj.id==511:
-                print('511 3')   
+        
         return False
  
     def get_to_confirm(self, obj):
@@ -256,21 +244,18 @@ class ReservationsSerializer(serializers.ModelSerializer):
         if is_staff :
             return True
         
+        if obj.workshop and obj.workshop.manager:
+                if obj.workshop.manager == curr_user:
+                    return True
+                else:
+                    return False
        
 
         #the current user's reposotory or store
         
 
-        if obj.user and obj.user.repository and obj.reservation_type:
+        if obj.user and obj.user.repository :
             
-            #if it is workshop reservation, only the workshop manager or staff can confirm it
-            if obj.workshop and obj.workshop.manager:
-                if obj.workshop.manager == curr_user:
-                    return True
-                else:
-                    return False
-            # if it is not workshop reservation, the user who can confirm it must be in the same store or repository of the reservation owner  
-            # the reciever and the current user is the same  
             if obj.user.repository == curr_user.repository :
                return True
            
@@ -280,10 +265,16 @@ class ReservationsSerializer(serializers.ModelSerializer):
     def get_to_not_sending(self, obj):
         is_store_keeper = self.context.get('is_store_keeper', False)
         is_staff = self.context.get('is_staff', False)
+        curr_user = self.context.get('request').user
 
-        if is_store_keeper or is_staff:
-            if obj.reservation_type == 'pending':
-                return True
+        if not obj.reservation_type == 'pending':
+            return False
+        
+        if is_staff:
+            return True
+            
+        if  obj.product_class and obj.product_class.product and obj.product_class.product.reposotory and obj.product_class.product.reposotory == curr_user.repository:
+            return True    
         return False
 
     def get_to_turn(self, obj):
@@ -291,26 +282,21 @@ class ReservationsSerializer(serializers.ModelSerializer):
         is_boss = self.context.get('is_boss', False)
         is_store_keeper = self.context.get('is_store_keeper', False)
 
-        if is_boss or is_store_keeper:
-            if obj.reservation_type in ['sent', 'returned from workshops'] and not obj.newOwner:
-                return True
-            else:
-                return False
+        if not obj.reservation_type in ['sent', 'returned from workshops'] or obj.newOwner:
+            return False
+        
+        if is_boss :
+            return True
 
-        if obj.user and obj.user.repository and obj.reservation_type:
-            if obj.newOwner:
-                return False
-
-            if obj.reservation_type in ['sent', 'returned from workshops']:
-                if is_boss:
-                   return True
-                if obj.workshop and obj.workshop.manager:
-                    if obj.workshop.manager == curr_user:
-                        return True
-                    else:
-                        return False
-                        
-            if curr_user.repository == obj.user.repository and (obj.reservation_type == 'sent' or obj.reservation_type == 'returned from workshops'):
+        if obj.workshop and obj.workshop.manager:
+                if obj.workshop.manager == curr_user:
+                    return True
+                else:
+                    return False
+                   
+        if obj.user and obj.user.repository and curr_user.repository :
+            
+            if curr_user.repository == obj.user.repository :
                return True
         return False
 
@@ -318,16 +304,22 @@ class ReservationsSerializer(serializers.ModelSerializer):
         curr_user = self.context.get('request').user
         is_boss = self.context.get('is_boss', False)
 
-        if obj.user and obj.user.repository and obj.reservation_type and obj.newOwner:
-            if is_boss:
-               return True
-            if obj.workshop and obj.workshop.manager:
+        if not obj.newOwner :
+            return False
+        if is_boss:
+            return True
+
+        if obj.workshop and obj.workshop.manager:
                 if obj.workshop.manager == curr_user:
                     return True
                 else:
-                    return False
+                    return False  
+              
+        if obj.user and obj.user.repository :
 
-            if obj.newOwner.store == curr_user.repository and (obj.reservation_type == 'sent' or obj.reservation_type == 'returned from workshops'):
+            
+
+            if obj.newOwner.repository == curr_user.repository :
                return True
         return False
 

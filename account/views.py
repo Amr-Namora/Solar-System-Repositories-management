@@ -287,21 +287,25 @@ def addStores(request):
     try:
         if Store.objects.filter(name=data['name']).exists():
             return Response({'error':'هذا المتجر موجود بالفعل'}, status=status.HTTP_400_BAD_REQUEST)
-        if Reposotory.objects.filter(name=data['name']).exists():
-            return Response({'error':'يوجد مستودع بهذا الاسم موجود بالفعل'}, status=status.HTTP_400_BAD_REQUEST)
+
         
         Store.objects.create(
             name=data['name'],
             location=data['location'],
         )
         
-        
-        Reposotory.objects.create(
-            name=data['name'],
-            location=data['location'],
-        )
+        x= Reposotory.objects.filter(name=data['name']).exists()
+        if not x:
+            Reposotory.objects.create(
+                name=data['name'],
+                location=data['location'],
+            )
+
     except Exception as e:
         return Response({'error':'data you entered is not enough'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    if x:
+        return Response({'error':'يوجد مستودع بهذا الاسم موجود بالفعل وسيتم اعتبار هذا المتجر لذلك المستودع'}, status=status.HTTP_200_OK)
 
     return Response({'details': 'your request has been processed successfully!'})
 
