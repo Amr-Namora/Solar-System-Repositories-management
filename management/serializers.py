@@ -155,7 +155,9 @@ class ReservationsSerializer(serializers.ModelSerializer):
         is_staff = self.context.get('is_staff', False)
         curr_user = self.context.get('request').user
 
-        if not (obj.reservation_type == 'pending' or obj.reservation_type == 'requested for workshops'):
+        # if not (obj.reservation_type == 'pending' or obj.reservation_type == 'requested for workshops'):
+        if not obj.reservation_type == 'pending' :
+
             return False
         
         if is_staff :
