@@ -115,7 +115,7 @@ class ReservationsSerializer(serializers.ModelSerializer):
     class Meta:
         model = Reservations
         fields = (
-            'name', 'createAt', 'amount', 'description', 'type', 'username',
+            'name', 'finalActionTime', 'amount', 'description', 'type', 'username',
             'reservation_type', 'id', 'newusername', 'reposotory', 'workshop_name',
             'workshop_isworking', 'used_in_workshop', 'to_send_to_workshop',
             'to_send', 'to_not_sending', 'to_confirm', 'to_turn',
@@ -131,7 +131,7 @@ class ReservationsSerializer(serializers.ModelSerializer):
 
 
 
-        if not obj.reservation_type == 'pending':
+        if not (obj.reservation_type == 'pending' or obj.reservation_type == 'requested for workshops'):
             return False
         
         if is_staff :
@@ -155,8 +155,8 @@ class ReservationsSerializer(serializers.ModelSerializer):
         is_staff = self.context.get('is_staff', False)
         curr_user = self.context.get('request').user
 
-        # if not (obj.reservation_type == 'pending' or obj.reservation_type == 'requested for workshops'):
-        if not obj.reservation_type == 'pending' :
+        if not (obj.reservation_type == 'pending' or obj.reservation_type == 'requested for workshops'):
+        # if not obj.reservation_type == 'pending' :
 
             return False
         
@@ -204,35 +204,72 @@ class ReservationsSerializer(serializers.ModelSerializer):
         return False
 
     
-    def get_to_send_to_workshop(self,obj):
+    # def get_to_send_to_workshop(self,obj):
+    #     curr_user = self.context.get('request').user
+    #     is_staff = self.context.get('is_staff', False)
+    #     #print('get_to_send_to_workshop')
+    #     #print(obj.amount)
+    #     if not obj.workshop:           
+    #         return False
+    #     if not (obj.reservation_type == 'requested for workshops' or obj.reservation_type == 'pending'):
+    #         return False
+        
+    #     amount_available=Amounts.objects.filter(is_available='متاح',product_class=obj.product_class).first()
+    #     amount_requested=Amounts.objects.filter(is_available='مطلوب للشراء',product_class=obj.product_class).first()
+
+    #     if not amount_available :   
+    #         return False
+    #     if obj.reservation_type == 'requested for workshops' and amount_requested and amount_requested.amount >0 and amount_available.amount < obj.amount:
+    #         return False
+
+    #     if is_staff :
+    #         return True
+    #     if obj.user and obj.user.repository   :
+
+    #         if  obj.product_class and obj.product_class.product and obj.product_class.product.reposotory and obj.product_class.product.reposotory == curr_user.repository:
+
+    #            #print(5)
+    #            return True
+        
+    #     return False
+ 
+    def get_to_send_to_workshop(self, obj):
         curr_user = self.context.get('request').user
         is_staff = self.context.get('is_staff', False)
-        #print('get_to_send_to_workshop')
-        #print(obj.amount)
+        
         if not obj.workshop:           
             return False
         if not (obj.reservation_type == 'requested for workshops' or obj.reservation_type == 'pending'):
             return False
         
-        amount_available=Amounts.objects.filter(is_available='متاح',product_class=obj.product_class).first()
-        amount_requested=Amounts.objects.filter(is_available='مطلوب للشراء',product_class=obj.product_class).first()
+        # --- THE SPEED FIX STARTS HERE ---
+        # Get the pre-calculated amounts from the context (prepared in the view)
+        amounts_dict = self.context.get('amounts_dict', {})
+        
+        # Safely get the amounts for this specific product_class
+        pc_amounts = amounts_dict.get(obj.product_class_id, {})
+        
+        # If 'متاح' doesn't exist for this product class (equivalent to: if not amount_available)
+        if 'متاح' not in pc_amounts:   
+            return False
+            
+        amount_available_val = pc_amounts.get('متاح', 0)
+        amount_requested_val = pc_amounts.get('مطلوب للشراء', 0)
 
-        if not amount_available :   
+        # Evaluate the exact same logic but using the dictionary values
+        if obj.reservation_type == 'requested for workshops' and amount_requested_val > 0 and amount_available_val < obj.amount:
             return False
-        if obj.reservation_type == 'requested for workshops' and amount_requested and amount_requested.amount >0 and amount_available.amount < obj.amount:
-            return False
+        # --- THE SPEED FIX ENDS HERE ---
 
         if is_staff :
             return True
-        if obj.user and obj.user.repository   :
-
-            if  obj.product_class and obj.product_class.product and obj.product_class.product.reposotory and obj.product_class.product.reposotory == curr_user.repository:
-
-               #print(5)
+            
+        if obj.user and obj.user.repository:
+            if obj.product_class and obj.product_class.product and obj.product_class.product.reposotory and obj.product_class.product.reposotory == curr_user.repository:
                return True
         
-        return False
- 
+        return False 
+    
     def get_to_confirm(self, obj):
         curr_user = self.context.get('request').user
         is_staff = self.context.get('is_staff', False)
@@ -269,7 +306,7 @@ class ReservationsSerializer(serializers.ModelSerializer):
         is_staff = self.context.get('is_staff', False)
         curr_user = self.context.get('request').user
 
-        if not obj.reservation_type == 'pending':
+        if not (obj.reservation_type == 'pending' or obj.reservation_type == 'requested for workshops'):
             return False
         
         if is_staff:
@@ -311,8 +348,8 @@ class ReservationsSerializer(serializers.ModelSerializer):
         if is_boss:
             return True
 
-        if obj.workshop and obj.workshop.manager:
-                if obj.workshop.manager == curr_user:
+        if obj.newWorkshop and obj.newWorkshop.manager:
+                if obj.newWorkshop.manager == curr_user:
                     return True
                 else:
                     return False  
@@ -325,6 +362,30 @@ class ReservationsSerializer(serializers.ModelSerializer):
                return True
         return False
 
+
+
+class ReservationsSerializerForBillAndWorkshop(serializers.ModelSerializer):
+    # 5. Serializer Cleanup: Replace simple methods with ReadOnlyFields 
+    name = serializers.ReadOnlyField(source='product_class.product.name')
+    description = serializers.ReadOnlyField(source='product_class.product.description')
+    type = serializers.ReadOnlyField(source='product_class.type')
+    username = serializers.ReadOnlyField(source='user.username')
+    newusername = serializers.ReadOnlyField(source='newOwner.username')
+    reposotory = serializers.ReadOnlyField(source='product_class.product.reposotory.name')
+    workshop_name = serializers.ReadOnlyField(source='workshop.name')
+    workshop_isworking = serializers.ReadOnlyField(source='workshop.is_working')
+
+    
+    class Meta:
+        model = Reservations
+        fields = (
+            'name', 'finalActionTime', 'amount', 'description', 'type', 'username',
+            'reservation_type', 'id', 'newusername', 'reposotory', 'workshop_name',
+            'workshop_isworking', 'used_in_workshop'
+        )
+
+    
+   
 
 class ReposotorySerializer(serializers.ModelSerializer):
     class Meta:

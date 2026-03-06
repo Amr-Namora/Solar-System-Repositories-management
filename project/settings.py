@@ -215,3 +215,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTHENTICATION_BACKENDS = [
     'django.contrib.auth.backends.ModelBackend',
 ]
+
+
+MINIMUM_APP_VERSION = config("MINIMUM_APP_VERSION")
+APP_DOWNLOAD_LINK = config("APP_DOWNLOAD_LINK")

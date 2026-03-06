@@ -215,11 +215,14 @@ class Reservations(models.Model):
     )
     product_class=models.ForeignKey(Class,related_name='reservations',default='',on_delete=models.PROTECT)
     amount=models.BigIntegerField(default=0)
-    createAt = models.DateTimeField(null=True, auto_now_add=True,db_index=True)
+    finalActionTime = models.DateTimeField(null=True, auto_now_add=True,db_index=True)
+    #it will be set to now whenever the user is sent, turned, confirmed, cancelled, or any action
     EndAt = models.DateTimeField(null=True, blank=True)
 
     reservation_type=models.CharField(max_length=50,choices=types,default='',db_index=True)
     workshop=models.ForeignKey(Workshop,related_name='workshop_reservations',default='',on_delete=models.PROTECT,null=True,blank=True)
+    newWorkshop=models.ForeignKey(Workshop,related_name='new_workshops',default='',on_delete=models.PROTECT,null=True,blank=True)
+
     bill=models.ForeignKey(Bill,related_name='bill_reservations',default='',on_delete=models.PROTECT,null=True,blank=True)
 
     used_in_workshop=models.BigIntegerField(default=-1,null=True,blank=True)

@@ -47,35 +47,82 @@ User = get_user_model()
 #
 
 
+from rest_framework import serializers
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from django.contrib.auth import authenticate
+from django.conf import settings
+
+import re
+
 class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
-    """
-    Custom serializer to allow login with either a username or a phone number.
-    The client still sends 'username' and 'password' in the payload.
-    """
+    app_version = serializers.CharField(required=False, allow_blank=True)
+
+    def is_outdated(self, client_version, required_version):
+        print(f"Checking app version... Client: {client_version} | Required: {required_version}")
+        if not client_version:
+            return True
+        
+        try:
+            # 1. Clean the strings (removes spaces, letters, etc. Keeps only numbers and dots)
+            c_clean = re.sub(r'[^\d.]', '', str(client_version))
+            r_clean = re.sub(r'[^\d.]', '', str(required_version))
+
+            # 2. Convert to lists of integers
+            c_parts = [int(v) for v in c_clean.split('.') if v]
+            r_parts = [int(v) for v in r_clean.split('.') if v]
+
+            # 3. Pad with zeros so they are the same length (e.g. 1.2 vs 1.2.0)
+            length = max(len(c_parts), len(r_parts))
+            c_parts.extend([0] * (length - len(c_parts)))
+            r_parts.extend([0] * (length - len(r_parts)))
+            
+            # 4. Compare
+            is_old = c_parts < r_parts
+            
+            print(f"--- VERSION CHECK ---")
+            print(f"Client: {c_parts} | Required: {r_parts}")
+            print(f"Is App Outdated?: {is_old}")
+            print(f"---------------------")
+            
+            return is_old
+
+        except Exception as e:
+            print(f"Version check error: {e}")
+            return False # Return False if parsing fails so we don't accidentally lock users out
 
     def validate(self, attrs):
-        identifier = attrs.get("username")  # Can be either username or phone
-        password = attrs.get("password")
+        app_version = attrs.get("app_version", "0.0.0")
+        required_version = getattr(settings, 'MINIMUM_APP_VERSION', '1.0.0')
+        
+        # 1. Check version
+        if self.is_outdated(app_version, required_version):
+            print("Action: Rejecting login, app is outdated.")
+            raise serializers.ValidationError({
+                "error_type": "update_required",
+                "detail": "يوجد إصدار جديد من التطبيق. يرجى التحديث للمتابعة.",
+                "download_link": getattr(settings, 'APP_DOWNLOAD_LINK', '')
+            })
 
-        # First try to authenticate by treating the identifier as the username.
+        # 2. Authenticate
+        identifier = attrs.get("username")
+        password = attrs.get("password")
+        
+        print(f"Action: Version is good. Attempting to log in user: {identifier}")
+
         user = authenticate(request=self.context.get("request"), username=identifier, password=password)
 
-
-
         if user is None:
-            raise serializers.ValidationError("لا يوجد تطابق بين الاسم وكلمة السر!",
-                                              code="authorization")
+            print("Action: Login failed! Wrong username or password.")
+            raise serializers.ValidationError({"detail": "لا يوجد تطابق بين الاسم وكلمة السر!"}, code="authorization")
 
+        print("Action: Login Success!")
         self.user = user
         refresh = self.get_token(user)
 
-        data = {
+        return {
             "refresh": str(refresh),
             "access": str(refresh.access_token),
         }
-
-        return data
-
 
 class SingUpSerializerUser(serializers.ModelSerializer):
     confirm_password = serializers.CharField(write_only=True, required=True, min_length=8)

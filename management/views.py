@@ -6,7 +6,7 @@ from rest_framework.views import APIView
 from rest_framework import status
 from .models import Product, Amounts, Notification, Class, Add_Delete, Reservations, Reposotory, PushToken
 from .serializers import AmountsTypeSerializer, ReservationsSerializer, ClassSerializer, ProductSerializer, \
-    AmountsSerializer, \
+    AmountsSerializer, ReservationsSerializerForBillAndWorkshop ,\
     NotificationSerializer, Add_DeleteSerializer, AmountsAsProductSerializer, ReposotorySerializer ,BillsSerializer
 from django.contrib.auth import get_user_model
 from django.http import HttpRequest
@@ -626,16 +626,16 @@ def newreservation(request):
             Q(user=user) |
             Q(newOwner=user) |
             Q(workshop__manager=user)
-        ).order_by('-createAt')    
+        ).order_by('-finalActionTime')    
     elif is_staff:
-        details = Reservations.objects.all().order_by('-createAt')
+        details = Reservations.objects.all().order_by('-finalActionTime')
     else:
        
         details = Reservations.objects.filter(
                 Q(product_class__product__reposotory__name=user.repository.name) |
                 Q(user__repository=user.repository)|
                 Q(newOwner__repository=user.repository)
-            ).order_by('-createAt')
+            ).order_by('-finalActionTime')
     # Apply Filters
     if data.get('reposotory_id'):
         rep = Reposotory.objects.get(id=data['reposotory_id'])   
@@ -667,8 +667,8 @@ def newreservation(request):
     five_days_ago = now - timedelta(days=5)
 
     counts = details.aggregate(
-        cancelled_last_5_days=Count('id', filter=Q(reservation_type='cancelled', createAt__gte=five_days_ago)),
-        delivered_last_5_days=Count('id', filter=Q(reservation_type='delivered', createAt__gte=five_days_ago)),
+        cancelled_last_5_days=Count('id', filter=Q(reservation_type='cancelled', finalActionTime__gte=five_days_ago)),
+        delivered_last_5_days=Count('id', filter=Q(reservation_type='delivered', finalActionTime__gte=five_days_ago)),
         pending_total=Count('id', filter=Q(reservation_type='pending')),
         sent_total=Count('id', filter=Q(reservation_type='sent')),
         returned_from_workshops_total=Count('id', filter=Q(reservation_type='returned from workshops')),
@@ -1335,7 +1335,7 @@ def cancle_reservation(request):
         django_request.method = 'POST'
         django_request.POST = data
         print('try')
-
+        
         return Response({"message": "تم الغاء الحجز بنجاح"}, status=HTTP_200_OK)
     else:
         return Response({"error": x}, status=HTTP_404_NOT_FOUND)
@@ -1390,6 +1390,8 @@ def cancle_reservation_fun(Reservation_id,user):
         amount.amount -= int(data['amount'])
         amount.save()
         prodict_obj=class_obj.product
+        reservation.finalActionTime=timezone.now()
+        reservation.save()
         print('add_class_fun ...')
         return add_class_fun(None,data['product_id'],data['amount'],data['is_available'],class_obj.id,user)
     elif amount.amount < int(data['amount']):
@@ -1505,6 +1507,8 @@ def confirm_reservation(request):
         
         reservation.reservation_type='delivered'
         reservation.EndAt=timezone.now()
+        reservation.finalActionTime=timezone.now()
+
         reservation.save()
         return add_class(django_request, custom_data=data, user=request.user)
 
@@ -1601,6 +1605,8 @@ def send_reservation(request):
         reservation.save()
         amount.amount -= int(data['amount'])
         amount.save()
+        reservation.finalActionTime=timezone.now()
+        reservation.save()
      
         return Response({"done": "you have confirmed the reservation "}, status=HTTP_200_OK)
     return Response({"error": "No matching reservation found"}, status=HTTP_404_NOT_FOUND)
@@ -1700,6 +1706,8 @@ def send_requested_reservation(request):
         product_obj.total_available -= int(data['amount'])
         product_obj.total_requested -= int(data['amount'])
         product_obj.save()
+        reservation.finalActionTime=timezone.now()
+        reservation.save()
         return Response({"done": "you have confirmed the reservation "}, status=HTTP_200_OK)
     return Response({"error": "No matching reservation found"}, status=HTTP_404_NOT_FOUND)
 
@@ -1790,7 +1798,8 @@ def confirm_requested_reservation(request):
         django_request.POST = data
         print('try')
         print('try2')
-
+        reservation.finalActionTime=timezone.now()
+        reservation.save()
         return add_class(django_request, custom_data=data, user=request.user)
 
 
@@ -1932,7 +1941,9 @@ def cancle_requested_reservation_fun(Reservation_id,user):
         product_obj.total_requested -= int(data['amount'])
         product_obj.save()
         print('total_requested before : ',product_obj.total_requested )
-
+        reservation.finalActionTime=timezone.now()
+        reservation.reservation_type='cancelled'
+        reservation.save()
         return 'done'
     return "No matching reservation found"
 
@@ -2110,7 +2121,7 @@ def turnResevation(request):
         
     if data['new_workshop_name']:
         new_workshop=Workshop.objects.get(name=data['new_workshop_name'])
-        reservauion.workshop=new_workshop
+        reservauion.newWorkshop=new_workshop
         new_user=new_workshop.manager
         reservauion.save()
     elif data['new_username']:
@@ -2130,7 +2141,8 @@ def turnResevation(request):
         user=new_user,
         message=f' لقد قام {request.user.username} بتحويل حجزه اليك من المنتج {reservauion.product_class.type}  '
     )
-    
+    reservauion.finalActionTime=timezone.now()
+    reservauion.save()
     return Response({'details': 'the proceed went successfully'})
 
 
@@ -2144,10 +2156,22 @@ def confirmTurnResevation(request):
     reservauion = Reservations.objects.get(id=data['Reservation_id'])
 
     if reservauion :
-        old_user=reservauion.user
-        reservauion.user = request.user
-        reservauion.newOwner = None
-        reservauion.save()
+        if reservauion.newWorkshop:
+            old_user=reservauion.user
+            reservauion.user = request.user
+            reservauion.newOwner = None
+            reservauion.workshop=reservauion.newWorkshop
+            reservauion.newWorkshop=None
+            reservauion.save()
+        else :
+            old_user=reservauion.user
+            reservauion.user = request.user
+            reservauion.newOwner = None
+            reservauion.workshop=None
+            reservauion.newWorkshop=None
+
+            reservauion.save()    
+
         Notification.objects.create(
             user=old_user,
             message=f' لقد قام {request.user.username} بتاكيد تحويل حجزك اليه من المنتج {reservauion.product_class.type}  '
@@ -2156,6 +2180,8 @@ def confirmTurnResevation(request):
             user=request.user,
             message=f' لقد قام {request.user.username}  بتاكيد استلام تحويل حجز {old_user.username} من المنتج {reservauion.product_class.type} اليك '
         )
+        reservauion.finalActionTime=timezone.now()
+        reservauion.save()
     else:
         return Response({'error': 'you did not enter the informations properly'})
     return Response({'details': 'the proceed went successfully'})
@@ -2170,7 +2196,10 @@ def cancelTurnResevation(request):
     if reservauion :
         old_user=reservauion.user
         reservauion.newOwner = None
+        reservauion.newWorkshop = None
+        reservauion.finalActionTime=timezone.now()
         reservauion.save()
+            
         Notification.objects.create(
             user=old_user,
             message=f' لقد قام {request.user.username} بالغاء تحويل حجزك اليه من المنتج {reservauion.product_class.type}  '
@@ -2678,13 +2707,15 @@ def Workshop_details(request):
         print('hiiii')
         workshop_obj=Workshop.objects.get(id=data['workshop_id'])
         print('workshop_obj',workshop_obj)
-        reservations=Reservations.objects.filter(workshop=workshop_obj,).exclude(reservation_type='returned from workshops').order_by('-createAt')
-        serializer=ReservationsSerializer(reservations,many=True,context={'request': request})
+        reservations=Reservations.objects.filter(Q(workshop=workshop_obj)|Q(newWorkshop=workshop_obj)).exclude(reservation_type='returned from workshops').order_by('-finalActionTime')
+        
+        serializer=ReservationsSerializerForBillAndWorkshop(reservations,many=True,context={'request': request})
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR )
     print('serializer.data',serializer.data)
     return Response({
-        'reservations': serializer.data
+        'reservations': serializer.data,
+        'username':request.user.username
 
     })
 
@@ -2930,7 +2961,10 @@ def edit_amount_in_reservation(request):
                 available_amount=Amounts.objects.filter(product_class=class_obj,is_available='متاح').first()    
                 reserved_amount=Amounts.objects.filter(product_class=class_obj,is_available='محجوز').first()   
                 print('here x',)
-                x=cancle_reservation_fun(reservation.id,request.user)
+                if reservation.reservation_type=='pending':
+                    x=cancle_reservation_fun(reservation.id,request.user)
+                else :
+                    x=cancle_requested_reservation_fun(reservation.id,request.user)    
                 if x=='done' :
                     y=addClassToWorkshop_fun(reservation.workshop.id ,class_obj.id,new_amount,reservation.product_class.product.reposotory.id,request.user)                # add_class_fun(mytype,product_id,amount,is_available,class_id,user)
                     if y=='done' :
@@ -3012,7 +3046,10 @@ def edit_amount_in_reservation(request):
                 available_amount=Amounts.objects.filter(product_class=class_obj,is_available='متاح').first()    
                 reserved_amount=Amounts.objects.filter(product_class=class_obj,is_available='محجوز').first()   
                 print('here x',)
-                x=cancle_reservation_fun(reservation.id,request.user)
+                if reservation.reservation_type=='pending':
+                    x=cancle_reservation_fun(reservation.id,request.user)
+                else :
+                    x=cancle_requested_reservation_fun(reservation.id,request.user)
                 if x=='done' :
                     y=addClassToWorkshop_fun(reservation.workshop.id ,class_obj.id,new_amount,reservation.product_class.product.reposotory.id,request.user)                # add_class_fun(mytype,product_id,amount,is_available,class_id,user)
                     if y=='done' :
@@ -3164,8 +3201,8 @@ def bill_details(request):
         print('hiiii , bill_details')
         print('bill_id',data['bill_id'])
         bill_obj=Bill.objects.get(id=data['bill_id'])
-        reservations=Reservations.objects.filter(bill=bill_obj,).order_by('createAt')
-        serializer=ReservationsSerializer(reservations,many=True,context={'request': request})
+        reservations=Reservations.objects.filter(bill=bill_obj,).order_by('finalActionTime')
+        serializer=ReservationsSerializerForBillAndWorkshop(reservations,many=True,context={'request': request})
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR )
     return Response({
