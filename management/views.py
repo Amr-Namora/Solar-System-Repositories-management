@@ -1,7 +1,7 @@
 from itertools import product
 from urllib import request
 from django.contrib.auth.models import Group
-from rest_framework.status import HTTP_200_OK, HTTP_201_CREATED, HTTP_400_BAD_REQUEST, HTTP_404_NOT_FOUND
+from rest_framework.status import HTTP_200_OK, HTTP_201_CREATED, HTTP_400_BAD_REQUEST, HTTP_404_NOT_FOUND, HTTP_500_INTERNAL_SERVER_ERROR
 from rest_framework.views import APIView
 from rest_framework import status
 from .models import Product, Amounts, Notification, Class, Add_Delete, Reservations, Reposotory, PushToken
@@ -124,11 +124,10 @@ def home(request):
 
 @api_view(['GET'])
 def home_for_reposotory_workshop(request):
-    # 1. compute totals from Product
 
-    
+    reposotory_id=request.GET.get('reposotory_id')    
     base_qs= Product.objects.filter(
-            classes__amounts__is_available ='متاح',reposotory__name__in=['الرئيسي','المرجة']
+            classes__amounts__is_available ='متاح',reposotory__id=reposotory_id
         )
     filtered_qs = home_filter(request.GET, queryset=base_qs).qs
 
@@ -142,7 +141,7 @@ def home_for_reposotory_workshop(request):
     unique = []
     seen = set()
     for item in raw:
-        key = (item.get('name'), item.get('description'),item.get('reposotory__id'))
+        key = (item.get('name'), item.get('description'))
         if key not in seen:
             seen.add(key)
             unique.append(item)
@@ -611,6 +610,8 @@ def newreservation(request):
         'reposotory_id': request.GET.get('reposotory_id'),
         'workshop_id': request.GET.get('workshop_id'),
     }
+    print('here newreservation')
+    print(data)
 
     # 1. Context Passing: Evaluate user groups ONCE using a single query
     user_groups = set(user.groups.values_list('name', flat=True))
@@ -626,19 +627,20 @@ def newreservation(request):
             Q(user=user) |
             Q(newOwner=user) |
             Q(workshop__manager=user)
-        ).order_by('-finalActionTime')    
+        ).exclude(Q(workshop__is_working='done')|Q(workshop__is_working='stopped')).order_by('-finalActionTime')    
     elif is_staff:
-        details = Reservations.objects.all().order_by('-finalActionTime')
+        details = Reservations.objects.all().exclude(Q(workshop__is_working='done')|Q(workshop__is_working='stopped')).order_by('-finalActionTime')
     else:
        
         details = Reservations.objects.filter(
                 Q(product_class__product__reposotory__name=user.repository.name) |
                 Q(user__repository=user.repository)|
                 Q(newOwner__repository=user.repository)
-            ).order_by('-finalActionTime')
+            ).exclude(Q(workshop__is_working='done')|Q(workshop__is_working='stopped')).order_by('-finalActionTime')
     # Apply Filters
     if data.get('reposotory_id'):
         rep = Reposotory.objects.get(id=data['reposotory_id'])   
+        print("rep ",rep.name)
         if is_store_keeper:
             details = details.filter( user__repository__name=rep.name)
 
@@ -646,7 +648,8 @@ def newreservation(request):
             details = details.filter(user__repository__name=rep.name)
 
     if data.get('workshop_id'):
-        details = details.filter(workshop__id=data['workshop_id'])
+        details = details.filter(Q(workshop__id=data['workshop_id'])|Q(newWorkshop__id=data['workshop_id']))
+        print("workshop ",Workshop.objects.get(id=data['workshop_id']).name)
 
     # 2. Database Optimization: Add requested select_related fields
     details = details.select_related(
@@ -1525,92 +1528,95 @@ def send_reservation(request):
         'username': request.data.get('username'),
 
     }
-    print("here send_reservation", data) 
-    reservation = Reservations.objects.get(id=data['Reservation_id'])
-    res_own=reservation.user
-    print("1 ") 
+    try:
+        print("here send_reservation", data) 
+        reservation = Reservations.objects.get(id=data['Reservation_id'])
+        res_own=reservation.user
+        print("1 ") 
 
-    class_obj = reservation.product_class
-    data['type'] = class_obj.type
-    data['name'] = class_obj.product.name
-    data['amount'] = reservation.amount
-    data['product_id'] = class_obj.product.id
-    amountt=data['amount']
-    print("2 ") 
+        class_obj = reservation.product_class
+        data['type'] = class_obj.type
+        data['name'] = class_obj.product.name
+        data['amount'] = reservation.amount
+        data['product_id'] = class_obj.product.id
+        amountt=data['amount']
+        print("2 ") 
 
-    amount = Amounts.objects.filter(
-        is_available='محجوز',
-        # product_class__product__name=data['name'],
-        # product_class__type=data['type']
-        product_class=class_obj,
-    ).first()
-    user=User.objects.get(username=data['username'])
-    # In your view, before you call `.first()`:
-    # print("Params:", qs.query.params)
-    print("3 ") 
+        amount = Amounts.objects.filter(
+            is_available='محجوز',
+            # product_class__product__name=data['name'],
+            # product_class__type=data['type']
+            product_class=class_obj,
+        ).first()
+        user=User.objects.get(username=data['username'])
+        # In your view, before you call `.first()`:
+        # print("Params:", qs.query.params)
+        print("3 ") 
 
-    if reservation :
-        if Reservations.objects.filter(
-                product_class=class_obj,
-                product_class__type=data['type'],
-                reservation_type='requested for workshops'
-                ).exists() and reservation.reservation_type!='requested for workshops' and reservation.workshop==None:
-                    return Response({'error': 'هناك حجز مطلوب لصالح ورشة لهذه المادة. قم بمعالجة ذلك الحجز اولا.'},
-                                status=HTTP_400_BAD_REQUEST)
-        user = request.user
-        default_user = User.objects.filter(groups__name="staff").first()
-        try:
-            print("4 ") 
+        if reservation :
+            if Reservations.objects.filter(
+                    product_class=class_obj,
+                    product_class__type=data['type'],
+                    reservation_type='requested for workshops'
+                    ).exists() and reservation.reservation_type!='requested for workshops' and reservation.workshop==None:
+                        return Response({'error': 'هناك حجز مطلوب لصالح ورشة لهذه المادة. قم بمعالجة ذلك الحجز اولا.'},
+                                    status=HTTP_400_BAD_REQUEST)
+            user = request.user
+            default_user = User.objects.filter(groups__name="staff").first()
+            try:
+                print("4 ") 
 
-            staff_group = Group.objects.get(name="staff")
-            staff_users = User.objects.filter(groups=staff_group)
-            for staff_member in staff_users:
-              if request.user != staff_member:
-                Add_Delete.objects.create(
-                    changer=user ,
-                    change_type='تسليم',
-                    name=data['name'],
-                    amount=data['amount'],
-                    type=data['type'],
-                    reader=staff_member,
-                )
-        except Group.DoesNotExist:
-            print("Warning: Staff group does not exist")
-        Add_Delete.objects.create(
-            changer=user ,
-            change_type='ارسال',
-            name=data['name'],
-            amount=data['amount'],
-            type=data['type'],
-            reader=user ,
-        )
-        print("5 ") 
+                staff_group = Group.objects.get(name="staff")
+                staff_users = User.objects.filter(groups=staff_group)
+                for staff_member in staff_users:
+                  if request.user != staff_member:
+                    Add_Delete.objects.create(
+                        changer=user ,
+                        change_type='تسليم',
+                        name=data['name'],
+                        amount=data['amount'],
+                        type=data['type'],
+                        reader=staff_member,
+                    )
+            except Group.DoesNotExist:
+                print("Warning: Staff group does not exist")
+            Add_Delete.objects.create(
+                changer=user ,
+                change_type='ارسال',
+                name=data['name'],
+                amount=data['amount'],
+                type=data['type'],
+                reader=user ,
+            )
+            print("5 ") 
 
-        Notification.objects.create(
-            user=res_own,
-            message=f' لقد تم ارسال حجزك بكمية {amountt} قطعة من المنتج {amount.product_class.type}  '
-        )
-        Notification.objects.create(
-            user=request.user,
-            message=f' لقد قام {request.user.username}  بارسال حجز بكمية {amountt} قطعة من المنتج {amount.product_class.type}  '
-        )
-        reservation.reservation_type='sent'
-        print('reservation.workshop')
-        print(reservation.workshop)
-        print(reservation.workshop==None)
-        if reservation.workshop!=None :
-            print('YES')
-            reservation.workshop.is_working='Yes'
-            reservation.workshop.save()
-        reservation.save()
-        amount.amount -= int(data['amount'])
-        amount.save()
-        reservation.finalActionTime=timezone.now()
-        reservation.save()
-     
-        return Response({"done": "you have confirmed the reservation "}, status=HTTP_200_OK)
-    return Response({"error": "No matching reservation found"}, status=HTTP_404_NOT_FOUND)
+            Notification.objects.create(
+                user=res_own,
+                message=f' لقد تم ارسال حجزك بكمية {amountt} قطعة من المنتج {amount.product_class.type}  '
+            )
+            Notification.objects.create(
+                user=request.user,
+                message=f' لقد قام {request.user.username}  بارسال حجز بكمية {amountt} قطعة من المنتج {amount.product_class.type}  '
+            )
+            reservation.reservation_type='sent'
+            print('reservation.workshop')
+            print(reservation.workshop)
+            print(reservation.workshop==None)
+            if reservation.workshop!=None :
+                print('YES')
+                reservation.workshop.is_working='Yes'
+                reservation.workshop.save()
+            reservation.save()
+            amount.amount -= int(data['amount'])
+            amount.save()
+            reservation.finalActionTime=timezone.now()
+            reservation.save()
 
+            return Response({"done": "you have confirmed the reservation "}, status=HTTP_200_OK)
+        return Response({"error": "No matching reservation found"}, status=HTTP_404_NOT_FOUND)
+    except Exception as e:
+        print("Error in send_reservation:", str(e))
+        return Response({"error": "An error occurred while processing the request."}, status=HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['POST'])
 def send_requested_reservation(request):
@@ -2281,6 +2287,8 @@ def addWorkshop(request):
         'name': request.data.get('name'),
     }
     try:
+        if Workshop.objects.filter(name=data['name']).exists():
+            return Response({'error':'هذه الورشة موجود بالفعل'}, status=status.HTTP_400_BAD_REQUEST)
         Workshop.objects.create(
             name=data['name'],
             location=data['location'],
@@ -2724,9 +2732,14 @@ def Workshop_details(request):
 @api_view(['GET'])
 def reposotories_for_workshop(request):
 
-    print('hiwsad')
-    reposotories_for_workshop=Reposotory.objects.filter(name__in=['الرئيسي','المرجة'])
-
+    is_manager = request.user.groups.filter(name="staff").exists()
+    is_workshop_manager = request.user.groups.filter(name="WorkShopManagers").exists()
+    if is_manager :
+        reposotories_for_workshop=Reposotory.objects.filter(is_working='Yes').exclude(name='الورشات')
+    elif is_workshop_manager:
+        reposotories_for_workshop=request.user.allowed_repositories.filter(is_working='Yes').exclude(name='الورشات')
+    else:
+        return Response({'error':'you are not allowed to see the repositories for workshops'}, status=status.HTTP_403_FORBIDDEN )
     serializer=ReposotorySerializer(reposotories_for_workshop,many=True)
 
     return Response({
@@ -3268,7 +3281,11 @@ def addClassToBill(request):
     try:
         print('addClassToBill')
         print('data',data)
-        reposotory=Reposotory.objects.get(id=data['reposotory_id'])
+        is_staff = request.user.groups.filter(name="staff").exists()
+        if is_staff:    
+            reposotory=Reposotory.objects.get(id=data['reposotory_id'])
+        else:   
+            reposotory=request.user.repository
         print('reposotory',reposotory)
         bill_obj=Bill.objects.get(id=data['Bill_id'])
         print('bill_obj',bill_obj)
@@ -3359,16 +3376,19 @@ def addClassToBill(request):
 def home_for_reposotory_bill(request):
     # 1. compute totals from Product
 
+    reposotory_id=request.GET.get('reposotory_id')    
+    if reposotory_id:
+        reposotory_obj=Reposotory.objects.get(id=reposotory_id)
     user=request.user
     is_manager = request.user.groups.filter(name="staff").exists()
     if is_manager:
         base_qs= Product.objects.filter(
-            classes__amounts__is_available ='متاح'
+            classes__amounts__is_available ='متاح',reposotory=reposotory_obj
         ).exclude(reposotory__name='الورشات')
     else:
         base_qs= Product.objects.filter(
             classes__amounts__is_available ='متاح',
-            reposotory__name=user.repository.name
+            reposotory=user.repository
         ).exclude(reposotory__name='الورشات')
     filtered_qs = home_filter(request.GET, queryset=base_qs).qs
 

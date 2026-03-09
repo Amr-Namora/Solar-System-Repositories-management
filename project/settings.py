@@ -19,6 +19,7 @@ ALLOWED_HOSTS = [
     'localhost',
     'solar-system-repositories-management-1h39.onrender.com',
     '192.168.1.106',
+    '192.168.98.87',
     config('RENDER_EXTERNAL_HOSTNAME', default='')
 ]
 
@@ -71,8 +72,8 @@ CORS_ALLOWED_ORIGINS = [
     'http://localhost:8081',
     'http://192.168.1.106:8000',
     'http://192.168.1.106:8081',
-    'http://192.168.243.212:8000',
-    'http://192.168.243.212:8081',
+    'http://192.168.98.87:8000',
+    'http://192.168.98.87:8081',
 ]
 
 CSRF_TRUSTED_ORIGINS = [
@@ -82,8 +83,8 @@ CSRF_TRUSTED_ORIGINS = [
     'http://localhost:8081',
     'http://192.168.1.106:8000',
     'http://192.168.1.106:8081',
-    'http://192.168.243.212:8000',
-    'http://192.168.243.212:8081',
+    'http://192.168.98.87:8000',
+    'http://192.168.98.87:8081',
 ]
 
 # ---------------------------------------------------------
@@ -136,7 +137,8 @@ else:
             'HOST': config("host"),
             'PORT': config("port"),
         }
-    }
+     }
+    
 # DATABASES = {
 #     'default': {
 #         'ENGINE': 'django.db.backends.sqlite3',

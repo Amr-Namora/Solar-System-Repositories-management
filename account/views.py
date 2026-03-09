@@ -302,7 +302,7 @@ def addStores(request):
             )
 
     except Exception as e:
-        return Response({'error':'data you entered is not enough'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
     
     if x:
         return Response({'error':'يوجد مستودع بهذا الاسم موجود بالفعل وسيتم اعتبار هذا المتجر لذلك المستودع'}, status=status.HTTP_200_OK)

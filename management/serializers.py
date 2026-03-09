@@ -100,6 +100,8 @@ class ReservationsSerializer(serializers.ModelSerializer):
     newusername = serializers.ReadOnlyField(source='newOwner.username')
     reposotory = serializers.ReadOnlyField(source='product_class.product.reposotory.name')
     workshop_name = serializers.ReadOnlyField(source='workshop.name')
+    newWorkshop_name = serializers.ReadOnlyField(source='newWorkshop.name')
+
     workshop_isworking = serializers.ReadOnlyField(source='workshop.is_working')
 
     # Complex logic properties
@@ -119,7 +121,7 @@ class ReservationsSerializer(serializers.ModelSerializer):
             'reservation_type', 'id', 'newusername', 'reposotory', 'workshop_name',
             'workshop_isworking', 'used_in_workshop', 'to_send_to_workshop',
             'to_send', 'to_not_sending', 'to_confirm', 'to_turn',
-            'to_cancle_confirm_turning', 'to_cancle_reserve', 'to_edit_amount_in_reservation'
+            'to_cancle_confirm_turning', 'to_cancle_reserve', 'to_edit_amount_in_reservation', 'newWorkshop_name'
         )
 
     # Note: All group checks are replaced by self.context.get()
