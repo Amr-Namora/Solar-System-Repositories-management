@@ -405,7 +405,27 @@ class WorkshopSerializer(serializers.ModelSerializer):
 
 class BillsSerializer(serializers.ModelSerializer):
     seller_name = serializers.ReadOnlyField(source='seller.username', allow_null=True)
+    is_manager = serializers.SerializerMethodField()
+    can_edit = serializers.SerializerMethodField()
+
 
     class Meta:
         model = Bill
         fields = '__all__'
+
+    def get_can_edit(self,obj):
+        is_staff = self.context.get('is_staff', False)
+        request = self.context.get('request')
+        user=request.user
+
+        if user in is_staff:   
+            return True
+        
+        
+        return obj.seller == user
+
+    def get_is_manager(self, obj):
+        is_staff = self.context.get('is_staff', False)
+        if obj.seller in is_staff:   
+            return True
+        return False

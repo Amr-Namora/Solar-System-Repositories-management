@@ -97,6 +97,12 @@ class Bill(models.Model):
     details = models.TextField(default='')
     is_working = models.CharField(max_length=30, choices=Yes_No, default='not started yet')
     seller = models.ForeignKey(settings.AUTH_USER_MODEL,null=True, related_name='Bill_seller', on_delete=models.PROTECT)
+    Reposotory=models.ForeignKey(Reposotory,on_delete=PROTECT,null=True,blank=False)
+    allowed_users = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        related_name="user_allowed_for_bill",  # Prevents conflicts
+        blank=True
+    )    
     createAt = models.DateTimeField(null=True, auto_now_add=True)
     EndAt = models.DateTimeField(null=True, blank=True)
     

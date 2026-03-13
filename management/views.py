@@ -9,6 +9,9 @@ from .serializers import AmountsTypeSerializer, ReservationsSerializer, ClassSer
     AmountsSerializer, ReservationsSerializerForBillAndWorkshop ,\
     NotificationSerializer, Add_DeleteSerializer, AmountsAsProductSerializer, ReposotorySerializer ,BillsSerializer
 from django.contrib.auth import get_user_model
+from rest_framework.permissions import AllowAny
+from rest_framework.decorators import  permission_classes
+
 from django.http import HttpRequest
 from django.utils import timezone
 from datetime import timedelta
@@ -57,46 +60,54 @@ def is_staff(request):
 
 
 
+from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+from rest_framework.response import Response
+from rest_framework.status import HTTP_200_OK
+from rest_framework.decorators import api_view
+from django.db.models import Q
 
 @api_view(['GET'])
 def home(request):
-    reposotory_name=request.GET.get('reposotory_name')
-    # 1. compute totals from Product
+    # 1. Get pagination parameters
+    page_number = request.GET.get('page', 1)
+    limit = request.GET.get('limit', 10)
+    
+    reposotory_name = request.GET.get('reposotory_name')
     is_manager = request.user.groups.filter(name="staff").exists() 
     is_store_keeper = request.user.groups.filter(name="StoreKeeper").exists()
-    if reposotory_name:
-        reposotory=Reposotory.objects.filter(name=reposotory_name).first()
 
+    # 2. Base Queryset Logic
+    if reposotory_name:
+        reposotory = Reposotory.objects.filter(name=reposotory_name).first()
         if is_manager or is_store_keeper:
             base_qs = Product.objects.filter(reposotory=reposotory)
-        # base_qs = Product.objects.all()
         else:
-            base_qs= Product.objects.filter(reposotory=reposotory,
+            base_qs = Product.objects.filter(
+                reposotory=reposotory,
                 classes__amounts__amount__gt=0,
                 classes__amounts__is_available__in=['قيد الوصول', 'متاح']
             ).distinct()
-    else :
+    else:
         if is_manager or is_store_keeper:
             base_qs = Product.objects.all().exclude(reposotory__name='الورشات')
-        # base_qs = Product.objects.all()
         else:
             allowed_repos = request.user.allowed_repositories.all()
-            base_qs= Product.objects.filter(
+            base_qs = Product.objects.filter(
                 classes__amounts__amount__gt=0,
                 classes__amounts__is_available__in=['قيد الوصول', 'متاح'],
-                reposotory__in=allowed_repos  # Use __in lookup with the queryset
+                reposotory__in=allowed_repos
             ).exclude(Q(reposotory__name=request.user.repository.name) | Q(reposotory__name='الورشات')).distinct()
 
-    # 3. apply your existing filter
+    # 3. Apply your existing filter
     filtered_qs = home_filter(request.GET, queryset=base_qs).qs
 
-    # 4. serialize
+    # 4. Serialize
     serializer = ProductSerializer(
         filtered_qs, many=True, context={'request': request}
     )
-    raw = serializer.data  # this is a list of {'name':…, 'description':…}
+    raw = serializer.data  
 
-    # 5. dedupe by (name, description)
+    # 5. Deduplicate by (name, description)
     unique = []
     seen = set()
     for item in raw:
@@ -105,21 +116,29 @@ def home(request):
             seen.add(key)
             unique.append(item)
 
-    user=request.user
-    reposotory=user.repository
+    # 6. Apply Pagination to the deduplicated list
+    paginator = Paginator(unique, limit)
+    try:
+        paginated_items = paginator.page(page_number)
+    except PageNotAnInteger:
+        paginated_items = paginator.page(1)
+    except EmptyPage:
+        paginated_items = []
+
+    user = request.user
     repository_name = None
+    if hasattr(user, 'repository') and user.repository and hasattr(user.repository, 'name'):
+        repository_name = user.repository.name
 
-    if reposotory and reposotory.name:
-        repository_name=reposotory.name
-    # print(user.repository_name)
-    # 6. return deduped list
+    # 7. Return paginated deduplicated list
     return Response({
-
-        'serialize': unique,
+        'serialize': paginated_items.object_list if hasattr(paginated_items, 'object_list') else [],
         'is_manager': is_manager,
-        'store':repository_name
+        'store': repository_name,
+        'total_pages': paginator.num_pages,
+        'current_page': int(page_number),
+        'total_items': paginator.count
     }, status=HTTP_200_OK)
-
 
 
 @api_view(['GET'])
@@ -504,24 +523,6 @@ def class_type_delete(request):
     }, status=HTTP_200_OK)
 
 
-@api_view(['GET'])
-def notification(request):
-    user = request.user
-    is_manager = request.user.groups.filter(name="staff").exists()
-    user=request.user
-   
-    
-    notifications=Notification.objects.filter(user=user).order_by('-createAt')
-    
-    serializer=NotificationSerializer(notifications,many=True,
-                                      context={'request': request})
-    print(1)
-    return Response({
-        'notifications':serializer.data,
-        'is_manager': is_manager,
-
-    })
-
 
 @api_view(['POST'])
 def register_push_token(request):
@@ -551,16 +552,21 @@ def unregister_push_token(request):
     return Response({'detail': 'unregistered'}, status=HTTP_200_OK)
 
 
+from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+from datetime import datetime, timedelta
+from rest_framework.response import Response
+from rest_framework.decorators import api_view
+
 @api_view(['GET'])
 def history_changes(request):
     user = request.user
     is_manager = request.user.groups.filter(name="staff").exists()
 
+    # الحصول على رقم الصفحة والحد الأقصى
+    page_number = request.GET.get('page', 1)
+    limit = request.GET.get('limit', 10)
+
     # Step 1: Base queryset
-    # if is_manager:
-    #     base_queryset = Add_Delete.objects.all()
-    # else:
-    #     base_queryset = Add_Delete.objects.filter(reader=user)
     base_queryset = Add_Delete.objects.filter(reader=user)
 
     # Step 2: Apply filters using GET parameters
@@ -568,15 +574,18 @@ def history_changes(request):
 
     # Get the created_range parameter if it exists
     created_range = request.GET.get('created_range', '')
-    print(created_range)
     if created_range:
         # Handle single date (day filter)
         if ',' not in created_range:
-            try:
-                target_date = datetime.strptime(created_range, '%Y-%m-%d').date()
+            if created_range == 'today': # إصلاح حالة كلمة today التي يرسلها التطبيق
+                target_date = datetime.now().date()
                 queryset = queryset.filter(createAt__date=target_date)
-            except ValueError:
-                pass  # Ignore invalid date format
+            else:
+                try:
+                    target_date = datetime.strptime(created_range, '%Y-%m-%d').date()
+                    queryset = queryset.filter(createAt__date=target_date)
+                except ValueError:
+                    pass  # Ignore invalid date format
 
         # Handle date range (week/month/custom)
         else:
@@ -590,30 +599,62 @@ def history_changes(request):
             except (ValueError, IndexError):
                 pass  # Ignore invalid date formats
 
-    # Apply other filters from Add_Delete_filter
-    filtered_queryset = Add_Delete_filter(request.GET, queryset=queryset).qs
+    # Apply other filters from Add_Delete_filter and order it for consistent pagination
+    filtered_queryset = Add_Delete_filter(request.GET, queryset=queryset).qs.order_by('-createAt')
+
+    # Apply Pagination
+    paginator = Paginator(filtered_queryset, limit)
+    try:
+        paginated_history = paginator.page(page_number)
+    except PageNotAnInteger:
+        paginated_history = paginator.page(1)
+    except EmptyPage:
+        paginated_history = []
 
     # Step 3: Serialize the filtered data
-    serializer = Add_DeleteSerializer(filtered_queryset, many=True)
+    serializer = Add_DeleteSerializer(paginated_history, many=True)
 
     return Response({
         'history': serializer.data,
+        'total_pages': paginator.num_pages,
+        'current_page': int(page_number),
+        'total_items': paginator.count,
         'is_manager': is_manager,
     })
 
+
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from django.db.models import Q, Count
+from django.utils import timezone
+from datetime import timedelta
+# لا تنسى الاستيرادات الخاصة بك
+
+from datetime import timedelta
+from django.utils import timezone
+from django.db.models import Q, Count
+from rest_framework.response import Response
+from rest_framework.decorators import api_view
 
 @api_view(['GET'])
 def newreservation(request):
     user = request.user
     
+    try:
+        page = int(request.GET.get('page', 1))
+        limit = int(request.GET.get('limit', 20))
+    except ValueError:
+        page = 1
+        limit = 20
+
     data = {
         'reposotory_id': request.GET.get('reposotory_id'),
         'workshop_id': request.GET.get('workshop_id'),
     }
-    print('here newreservation')
-    print(data)
+    
+    # Get status filter from frontend
+    status_filter = request.GET.get('status')
 
-    # 1. Context Passing: Evaluate user groups ONCE using a single query
     user_groups = set(user.groups.values_list('name', flat=True))
     is_store_keeper = "StoreKeeper" in user_groups
     is_workshop_manager = "WorkShopManagers" in user_groups
@@ -621,109 +662,103 @@ def newreservation(request):
     is_boss = "boss" in user_groups
     username = user.username
 
-    # Base QuerySet logic
+    # 1. Base Query
     if is_workshop_manager:
         details = Reservations.objects.filter(
-            Q(user=user) |
-            Q(newOwner=user) |
-            Q(workshop__manager=user)
+            Q(user=user) | Q(newOwner=user) | Q(workshop__manager=user)
         ).exclude(Q(workshop__is_working='done')|Q(workshop__is_working='stopped')).order_by('-finalActionTime')    
     elif is_staff:
-        details = Reservations.objects.all().exclude(Q(workshop__is_working='done')|Q(workshop__is_working='stopped')).order_by('-finalActionTime')
+        details = Reservations.objects.all().exclude(
+            Q(workshop__is_working='done')|Q(workshop__is_working='stopped')
+        ).order_by('-finalActionTime')
     else:
-       
         details = Reservations.objects.filter(
-                Q(product_class__product__reposotory__name=user.repository.name) |
-                Q(user__repository=user.repository)|
-                Q(newOwner__repository=user.repository)
-            ).exclude(Q(workshop__is_working='done')|Q(workshop__is_working='stopped')).order_by('-finalActionTime')
-    # Apply Filters
+            Q(product_class__product__reposotory__name=user.repository.name) |
+            Q(user__repository=user.repository)|
+            Q(newOwner__repository=user.repository)
+        ).exclude(Q(workshop__is_working='done')|Q(workshop__is_working='stopped')).order_by('-finalActionTime')
+        
+    # 2. Apply Repository / Workshop Filters
     if data.get('reposotory_id'):
         rep = Reposotory.objects.get(id=data['reposotory_id'])   
-        print("rep ",rep.name)
-        if is_store_keeper:
-            details = details.filter( user__repository__name=rep.name)
-
-        else :     
-            details = details.filter(user__repository__name=rep.name)
+        details = details.filter(user__repository__name=rep.name)
 
     if data.get('workshop_id'):
         details = details.filter(Q(workshop__id=data['workshop_id'])|Q(newWorkshop__id=data['workshop_id']))
-        print("workshop ",Workshop.objects.get(id=data['workshop_id']).name)
 
-    # 2. Database Optimization: Add requested select_related fields
     details = details.select_related(
-        'user', 
-        'user__store', 
-        'user__repository', 
-        'newOwner', 
-        'newOwner__store', 
-        'workshop', 
-        'workshop__manager',
-        'product_class',
-        'product_class__product', 
+        'user', 'user__store', 'user__repository', 'newOwner', 'newOwner__store', 
+        'workshop', 'workshop__manager', 'product_class', 'product_class__product', 
         'product_class__product__reposotory',
     )
 
-    # 3. Aggregation: Replace Python loop with Database aggregation
-    now = timezone.now()
-    five_days_ago = now - timedelta(days=5)
+    response_data = {
+        'page': page,
+        'limit': limit,
+    }
 
-    counts = details.aggregate(
-        cancelled_last_5_days=Count('id', filter=Q(reservation_type='cancelled', finalActionTime__gte=five_days_ago)),
-        delivered_last_5_days=Count('id', filter=Q(reservation_type='delivered', finalActionTime__gte=five_days_ago)),
-        pending_total=Count('id', filter=Q(reservation_type='pending')),
-        sent_total=Count('id', filter=Q(reservation_type='sent')),
-        returned_from_workshops_total=Count('id', filter=Q(reservation_type='returned from workshops')),
-        requested_total=Count('id', filter=Q(reservation_type='requested for workshops')),
-    )
+    # 3. Calculate Counts BEFORE filtering by status (so stats stay visible/accurate)
+    if page == 1:
+        now = timezone.now()
+        five_days_ago = now - timedelta(days=5)
+        counts = details.aggregate(
+            cancelled_last_5_days=Count('id', filter=Q(reservation_type='cancelled', finalActionTime__gte=five_days_ago)&Q(newOwner__isnull=True)),
+            delivered_last_5_days=Count('id', filter=Q(reservation_type='delivered', finalActionTime__gte=five_days_ago)&Q(newOwner__isnull=True)),
+            pending_total=Count('id', filter=Q(reservation_type='pending')&Q(newOwner__isnull=True)),
+            sent_total=Count('id', filter=Q(reservation_type='sent')&Q(newOwner__isnull=True)),
+            returned_from_workshops_total=Count('id', filter=Q(reservation_type='returned from workshops')&Q(newOwner__isnull=True)),
+            requested_total=Count('id', filter=Q(reservation_type='requested for workshops')&Q(newOwner__isnull=True)),
+            # NEW: Add transfer count in backend so it represents ALL pages
+            transfer_total=Count('id', filter=Q(newOwner__isnull=False)),
+        )
+        total_count = details.count()
+        
+        response_data.update({
+            'count': total_count,
+            'is_manager': is_staff,
+            'is_workshop_manager': is_workshop_manager,
+            'is_store_keeper': is_store_keeper,
+            'username': username,
+            'counts': counts
+        })
 
-    # 4. Handle hidden N+1 inside get_to_send_to_workshop (bulk fetch Amounts instead of inside Serializer)
-    # product_class_ids = [d.product_class_id for d in details if d.product_class_id]
-    # amounts = Amounts.objects.filter(product_class_id__in=product_class_ids)
-    # amounts_dict = {}
-    # for amt in amounts:
-    #     if amt.product_class_id not in amounts_dict:
-    #         amounts_dict[amt.product_class_id] = {}
-    #     amounts_dict[amt.product_class_id][amt.is_available] = amt.amount
-    product_class_ids = details.values_list('product_class_id', flat=True).distinct()
+    # 4. Apply Status Filter from Frontend Stats Card
+    if status_filter:
+        
+        if status_filter == 'transfer':
+            details = details.filter(newOwner__isnull=False)            
+        else:
+            details = details.filter(reservation_type=status_filter,newOwner__isnull=True)
+
+    # 5. Apply Pagination
+    start_index = (page - 1) * limit
+    end_index = start_index + limit
+    paginated_details = details[start_index:end_index]
+
+    # Extract Amounts
+    product_class_ids = {item.product_class_id for item in paginated_details if item.product_class_id}
     amounts_qs = Amounts.objects.filter(product_class_id__in=product_class_ids)
-    # Prepare Context
     amounts_dict = {}
     for amt in amounts_qs:
         pc_id = amt.product_class_id
         if pc_id not in amounts_dict:
             amounts_dict[pc_id] = {}
         amounts_dict[pc_id][amt.is_available] = amt.amount
+        
     context = {
         'request': request,
         'is_staff': is_staff,
         'is_store_keeper': is_store_keeper,
         'is_workshop_manager': is_workshop_manager,
         'is_boss': is_boss,
-        'details': details,
-        'amounts_dict': amounts_dict, # Key addition
+        'details': paginated_details,
+        'amounts_dict': amounts_dict,
     }
 
-    serializer = ReservationsSerializer(details, many=True, context=context)
+    serializer = ReservationsSerializer(paginated_details, many=True, context=context)
+    response_data['details'] = serializer.data
     
-    return Response({
-        'count': details.count(),
-        'is_manager': is_staff,
-        'is_workshop_manager': is_workshop_manager,
-        'is_store_keeper': is_store_keeper,
-        'username': username,
-        'details': serializer.data,
-        'counts': {
-            'cancelled_last_5_days': counts['cancelled_last_5_days'],
-            'delivered_last_5_days': counts['delivered_last_5_days'],
-            'pending_total': counts['pending_total'],
-            'sent_total': counts['sent_total'],
-            'returned_from_workshops_total': counts['returned_from_workshops_total'],
-            'requested_total': counts['requested_total'],
-        }
-    })
-
+    return Response(response_data)
 
 
 @api_view(['GET'])
@@ -2115,12 +2150,12 @@ def turnResevation(request):
         return Response ({'error':'you did not enter the informations properly'})
     if data['new_workshop_name']:
         print('new_workshop_name:', data['new_workshop_name'])
-        print('reservation workshop:', reservauion.workshop.name)
-        if  data['new_workshop_name'] == reservauion.workshop.name:
-            print('same workshop,the error has been araised')
-            return Response ({'error':'هذا الحجز موجود بالفعل في هذه الورشة'},status=status.HTTP_400_BAD_REQUEST)
+        if reservauion.workshop and reservauion.workshop.name:
+            if  data['new_workshop_name'] == reservauion.workshop.name:
+                print('same workshop,the error has been araised')
+                return Response ({'error':'هذا الحجز موجود بالفعل في هذه الورشة'},status=status.HTTP_400_BAD_REQUEST)
     
-    if data['new_username']:
+    if data['new_username'] and reservauion.workshop==None:
         user=User.objects.get(username=data['new_username'])
         if  user.repository == reservauion.user.repository:
             return Response ({'error':'الحجز موجود بالفعل في متجر هذا المستخدم'},status=status.HTTP_400_BAD_REQUEST)        
@@ -2164,14 +2199,14 @@ def confirmTurnResevation(request):
     if reservauion :
         if reservauion.newWorkshop:
             old_user=reservauion.user
-            reservauion.user = request.user
+            reservauion.user = reservauion.newOwner
             reservauion.newOwner = None
             reservauion.workshop=reservauion.newWorkshop
             reservauion.newWorkshop=None
             reservauion.save()
         else :
             old_user=reservauion.user
-            reservauion.user = request.user
+            reservauion.user = reservauion.newOwner
             reservauion.newOwner = None
             reservauion.workshop=None
             reservauion.newWorkshop=None
@@ -2218,24 +2253,86 @@ def cancelTurnResevation(request):
         return Response({'error': 'you did not enter the informations properly'})
     return Response({'details': 'the proceed went successfully'})
 
-
-
+from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+from django.db.models import Q
+from rest_framework.response import Response
+from rest_framework.decorators import api_view
+# (Make sure Workshop and WorkshopSerializer are also imported)
 
 @api_view(['GET'])
 def workshops(request):
+    # 1. Get page and limit from the request url (default to page 1, limit 10)
+    page_number = request.GET.get('page', 1)
+    limit = request.GET.get('limit', 10)
+
     is_manager = request.user.groups.filter(name="staff").exists()
+    
     if is_manager:
-        workshops=Workshop.objects.all().exclude(Q(is_working='stopped')|Q(is_working='done')).order_by('-id')
+        workshops_qs = Workshop.objects.all().exclude(Q(is_working='stopped')|Q(is_working='done')).order_by('-id')
     else:
-        workshops=Workshop.objects.filter(Q(is_working='Yes')|Q(is_working='not started yet'),Q(manager=request.user)|Q(manager=None)).exclude(is_working='stopped').order_by('-id')
+        workshops_qs = Workshop.objects.filter(
+            Q(is_working='Yes')|Q(is_working='not started yet'),
+            Q(manager=request.user)|Q(manager=None)
+        ).exclude(is_working='stopped').order_by('-id')
 
-    serializer=WorkshopSerializer(workshops,many=True)
+    # 2. Apply Pagination
+    paginator = Paginator(workshops_qs, limit)
+    
+    try:
+        paginated_workshops = paginator.page(page_number)
+    except PageNotAnInteger:
+        # If page is not an integer, deliver first page.
+        paginated_workshops = paginator.page(1)
+    except EmptyPage:
+        # If page is out of range (e.g. 9999), deliver empty list instead of an error.
+        paginated_workshops = []
+
+    # 3. Serialize only the paginated data
+    serializer = WorkshopSerializer(paginated_workshops, many=True)
+    
     return Response({
-        'workshops': serializer.data
-
+        'workshops': serializer.data,
+        # Optional: Sending metadata helps if you ever want to upgrade your frontend logic
+        'total_pages': paginator.num_pages,
+        'current_page': int(page_number),
+        'total_items': paginator.count
     })
 
 
+@api_view(['GET'])
+def ended_workshops(request):
+    print(timezone.now())
+    # 1. Get page and limit from the request url (default to page 1, limit 10)
+    page_number = request.GET.get('page', 1)
+    limit = request.GET.get('limit', 10)
+
+    is_manager = request.user.groups.filter(name="staff").exists()
+    
+    if is_manager:
+        workshops_qs = Workshop.objects.filter(is_working='done').exclude(is_working='stopped').order_by('-EndAt')
+    else:
+        workshops_qs = Workshop.objects.filter(is_working='done', manager=request.user).exclude(is_working='stopped').order_by('-EndAt')
+
+    # 2. Apply Pagination
+    paginator = Paginator(workshops_qs, limit)
+    
+    try:
+        paginated_workshops = paginator.page(page_number)
+    except PageNotAnInteger:
+        paginated_workshops = paginator.page(1)
+    except EmptyPage:
+        paginated_workshops = []
+
+    # 3. Serialize only the paginated data
+    serializer = WorkshopSerializer(paginated_workshops, many=True)
+    
+    return Response({
+        'workshops': serializer.data,
+        # Optional metadata
+        'total_pages': paginator.num_pages,
+        'current_page': int(page_number),
+        'total_items': paginator.count
+    })
 
 
 @api_view(['GET'])
@@ -2262,22 +2359,6 @@ def turn_Reservation_to_workshops(request):
     })
 
 
-@api_view(['GET'])
-def ended_workshops(request):
-    is_manager = request.user.groups.filter(name="staff").exists()
-    if is_manager:
-        workshops=Workshop.objects.filter(is_working='done').exclude(is_working='stopped').order_by('-EndAt')
-    else:
-        workshops=Workshop.objects.filter(is_working='done',manager=request.user).exclude(is_working='stopped').order_by('-EndAt')
-
-    serializer=WorkshopSerializer(workshops,many=True)
-    return Response({
-        'workshops': serializer.data
-
-    })
-
-
-
 
 
 @api_view(['POST'])
@@ -2294,7 +2375,7 @@ def addWorkshop(request):
             location=data['location'],
         )
     except Exception as e:
-        return Response({'error':'data you entered is not enough'})
+        return Response({'error':str(e)},status=status.HTTP_400_BAD_REQUEST)
 
     return Response({'details:': 'your request has been proceed succefully!'})
 
@@ -2946,7 +3027,7 @@ def user_allowed_repositories(request, user_id):
         return Response({
             'allowed_repositories': [repo.id for repo in repositories]
         })
-    except CustomUser.DoesNotExist:
+    except User.DoesNotExist:
         return Response({'error': 'User not found'}, status=404)       
 
 
@@ -3112,42 +3193,113 @@ def edit_amount_in_reservation(request):
         
         
     
+from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+from rest_framework.response import Response
+from rest_framework.decorators import api_view
+from django.db.models import Q
+
 @api_view(['GET'])
 def bills(request):
+    page_number = request.GET.get('page', 1)
+    limit = request.GET.get('limit', 10)
     is_manager = request.user.groups.filter(name="staff").exists()
-      
+    user=request.user
+    is_staff=User.objects.filter(groups__name="staff")
+
     if is_manager:
-        bills=Bill.objects.all().exclude(Q(is_working='stopped')|Q(is_working='done')).order_by('-createAt')
+        bills_qs = Bill.objects.all().exclude(Q(is_working='stopped')|Q(is_working='done')).order_by('-createAt')
     else:
-        bills=Bill.objects.filter(Q(is_working='Yes')|Q(is_working='not started yet'),Q(seller=request.user)|Q(seller=None)).exclude(is_working='stopped').order_by('-createAt')
+        bills_qs = Bill.objects.filter(
+            Q(is_working='Yes')|Q(is_working='not started yet'),
+            Q(Reposotory=user.repository)|Q(allowed_users=user)
+        ).exclude(is_working='stopped',seller__groups__name="staff").order_by('-createAt')
 
-    serializer=BillsSerializer(bills,many=True)
-    print('serializer.data',serializer.data)
+    # Apply Pagination
+    paginator = Paginator(bills_qs, limit)
+    try:
+        paginated_bills = paginator.page(page_number)
+    except PageNotAnInteger:
+        paginated_bills = paginator.page(1)
+    except EmptyPage:
+        paginated_bills = []
+    context = {
+        'request':request,
+
+        'is_staff': is_staff,
+    }
+
+    serializer = BillsSerializer(paginated_bills, many=True,context=context)
     return Response({
-        'bills': serializer.data
-
+        'bills': serializer.data,
+        'total_pages': paginator.num_pages,
+        'current_page': int(page_number),
+        'total_items': paginator.count
     })
-
-
-
 
 
 @api_view(['GET'])
 def ended_bills(request):
-    print('hi ended bills')
+    page_number = request.GET.get('page', 1)
+    limit = request.GET.get('limit', 10)
     is_manager = request.user.groups.filter(name="staff").exists()
+    user=request.user
+    is_staff=User.objects.filter(groups__name="staff")
     if is_manager:
-        bills=Bill.objects.filter(is_working='done').order_by('-EndAt')
+        bills_qs = Bill.objects.filter(is_working='done').order_by('-EndAt')
     else:
-        bills=Bill.objects.filter(is_working='done',seller=request.user).order_by('-EndAt')
+        bills_qs = Bill.objects.filter(Q(Reposotory=user.repository)|Q(allowed_users=user), is_working='done').exclude(seller__groups__name="staff").order_by('-EndAt')
 
-    serializer=BillsSerializer(bills,many=True)
+    # Apply Pagination
+    paginator = Paginator(bills_qs, limit)
+    try:
+        paginated_bills = paginator.page(page_number)
+    except PageNotAnInteger:
+        paginated_bills = paginator.page(1)
+    except EmptyPage:
+        paginated_bills = []
+
+    context = {
+        'request':request,
+        'is_staff': is_staff,
+    }
+    serializer = BillsSerializer(paginated_bills, many=True,context=context)
     return Response({
-        'ended_bills': serializer.data
-
+        'ended_bills': serializer.data,
+        'total_pages': paginator.num_pages,
+        'current_page': int(page_number),
+        'total_items': paginator.count
     })
 
 
+@api_view(['GET'])
+def notification(request):
+    page_number = request.GET.get('page', 1)
+    limit = request.GET.get('limit', 10)
+    user = request.user
+    is_manager = request.user.groups.filter(name="staff").exists()
+    
+    notifications_qs = Notification.objects.filter(user=user).order_by('-createAt')
+    
+    # Apply Pagination
+    paginator = Paginator(notifications_qs, limit)
+    try:
+        paginated_notifications = paginator.page(page_number)
+    except PageNotAnInteger:
+        paginated_notifications = paginator.page(1)
+    except EmptyPage:
+        paginated_notifications = []
+    
+    serializer = NotificationSerializer(
+        paginated_notifications, many=True, context={'request': request}
+    )
+    
+    return Response({
+        'notifications': serializer.data,
+        'is_manager': is_manager,
+        'total_pages': paginator.num_pages,
+        'current_page': int(page_number),
+        'total_items': paginator.count
+    })
 
 
 @api_view(['POST'])
@@ -3185,7 +3337,7 @@ def sell(request):
             data['is_available'] ='محجوز'
             amount.amount -= int(data['amount'])
             amount.save()
-            Reservation.objects.create(
+            Reservations.objects.create(
                 user=request.user,
                 product_class=class_obj,
                 amount=data['amount'],
@@ -3256,14 +3408,64 @@ def addBill(request):
     data = {
         'details': request.data.get('details'),
         'client_name': request.data.get('client_name'),
+        'allowed_users_id': request.data.get('allowed_users_id', []),  # Expecting a list of user IDs 
     }
     try:
-        Bill.objects.create(
+        print('data',data)
+        
+        if Bill.objects.filter(client_name=data['client_name']).exists():
+            return Response({'error': 'هناك فاتورة بنفس اسم العميل, نرجو إدخال اسم آخر'}, status=status.HTTP_400_BAD_REQUEST)
+        user=request.user
+        reposotory_obj=user.repository
+        print('1')
+
+
+        bill_obj=Bill.objects.create(
             client_name=data['client_name'],
             details=data['details'],
-            seller=request.user
+            seller=user,
+            Reposotory=reposotory_obj,
         )
+        if data['allowed_users_id']:
+            users = User.objects.filter(id__in=data['allowed_users_id'])
+            bill_obj.allowed_users.set(users)
+        print('2')
+
+
     except Exception as e:
+        print(str(e))
+        return Response({'error':'data you entered is not enough'})
+    print('your request has been proceed succefully!')
+    return Response({'details:': 'your request has been proceed succefully!'})
+
+
+@api_view(['POST'])
+def edit_bill(request):
+    data = {
+        
+        'bill_id': request.data.get('bill_id'),
+        'details': request.data.get('details'),
+
+        'client_name': request.data.get('client_name'),
+        'allowed_users_id': request.data.get('allowed_users_id', []),  # Expecting a list of user IDs 
+    }
+    try:
+        print('here edit bill')
+        print('data',data)
+        bill_obj = Bill.objects.get(id=data['bill_id'])
+        if Bill.objects.filter(client_name=data['client_name']).exclude(id=bill_obj.id).exists():
+            return Response({'error': 'هناك فاتورة بنفس اسم العميل, نرجو إدخال اسم آخر'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if data['allowed_users_id']:
+            users = User.objects.filter(id__in=data['allowed_users_id'])
+            bill_obj.allowed_users.set(users)
+        bill_obj.details=data['details']
+        bill_obj.client_name = data['client_name']
+        bill_obj.save()
+
+            
+    except Exception as e:
+        print(str(e))
         return Response({'error':'data you entered is not enough'})
 
     return Response({'details:': 'your request has been proceed succefully!'})
@@ -3325,6 +3527,7 @@ def addClassToBill(request):
                 amount=data['amount'],
                 type=type,
                 reader=user ,
+                details=f'الى الزبون {bill_obj.client_name}'
             )
             print(2)
             reservation_obj=Reservations.objects.create(
@@ -3435,3 +3638,15 @@ def reposotories_for_bill(request):
 
     })
 
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def my_script(request):
+    bills=Bill.objects.all()
+    for bill in bills:
+        x=str(bill.client_name)
+        if x.__len__()<2:
+            bill.is_working='done'
+            bill.save()
+    return Response({"status": "Script executed successfully"}, status=200)        

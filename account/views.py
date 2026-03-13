@@ -176,6 +176,33 @@ def users(request):
     })
 
 
+
+@api_view(['GET'])
+def users_for_allowed_users_in_bill(request):
+    user=request.user
+    reposotory=user.repository
+    programmer_group=Group.objects.get(name="programers")
+    workshop_managers_group=Group.objects.get(name="WorkShopManagers")
+    is_staff=Group.objects.get(name="staff")
+    is_manager = user.groups.filter(name='staff').exists()
+    
+    if is_manager:
+        users=CustomUser.objects.filter(is_active=True).exclude(Q(groups__in={programmer_group,is_staff,workshop_managers_group}))
+
+    else :        
+        users=CustomUser.objects.filter(is_active=True).exclude(Q(groups__in={programmer_group,is_staff,workshop_managers_group})|(Q(repository=reposotory)))
+
+    serializer=userSerializer(
+
+        users,
+        many=True,
+        context={'request': request}
+    )
+    return Response({
+        'users':serializer.data
+
+    })
+
 @api_view(['GET'])
 def users_no_boss_no_workshop_managers(request): 
 
@@ -215,6 +242,8 @@ def users_workshops(request):
         'users':serializer.data
 
     })
+
+
 
 
 
@@ -407,6 +436,7 @@ class UserUpdateView(APIView):
                     user.save()
                 elif new_role == 'امين مستودع':
                     user.groups.add(reposotory_group)
+                    user.store=None
                     if new_repository_name:
                         try:
                             repository = Reposotory.objects.get(name=new_repository_name)
@@ -474,12 +504,16 @@ def ping(request):
 
 
 
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def my_script(request):
-    users=CustomUser.objects.all()
-    for user in users:
-        if user.store:
-            user.repository=Reposotory.objects.filter(name=user.store.name).first()
-            user.save()
-    return Response({"status": "script executed"}, status=200)        
+# @api_view(['GET'])
+# @permission_classes([AllowAny])
+# def my_script(request):
+#     user=CustomUser.objects.filter(username='amr').first()
+#     if user:
+#         Notification.objects.create(
+#             user=user,
+#             message="تم تنفيذ السكريبت بنجاح"
+#         )
+
+
+
+#     return Response({"status": "script executed"}, status=200)        
