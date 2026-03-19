@@ -5,7 +5,7 @@ urlpatterns = [
     path('home/', views.home, name='home'),
     path('homeRead/', views.homeRead, name='homeRead'),
     path('home_for_reposotory_workshop/', views.home_for_reposotory_workshop, name='home_for_reposotory_workshop'),
-
+    
     path('myStore/', views.myStore, name='myStore'),
     path('product_details/', views.product_details, name='product_details'),
     path('product_types/', views.product_types, name='product_types'),
@@ -32,6 +32,8 @@ urlpatterns = [
     path('search/', views.search_materials, name='search-materials'),
     path('class_type_name/', views.class_type_name, name='class_type_name'),
     path('class_type_delete/', views.class_type_delete, name='class_type_delet'),
+    path('class_type_undelete/', views.class_type_undelete, name='class_type_undelete'),
+
     path('addReposotories/', views.addReposotory, name='addReposotories'),
     path('reposotories/', views.reposotory, name='reposotories'),
     path('turnResevation/', views.turnResevation, name='turnResevation'),
@@ -64,7 +66,6 @@ urlpatterns = [
     path('home_for_reposotory_bill/', views.home_for_reposotory_bill, name='home_for_reposotory_bill'),
     path('cancle_requested_reservation/', views.cancle_requested_reservation, name='cancle_requested_reservation'),
     path('edit_bill/',views.edit_bill,name='edit_bill'),
-
-path('my_script',views.my_script,name='my_script'),
+    path('my_script',views.my_script,name='my_script'),
 
 ]

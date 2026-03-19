@@ -493,11 +493,9 @@ def class_type_delete(request):
 
     obj_class= Class.objects.get(id=data['class_id'])
     print(obj_class)
-    amounts=Amounts.objects.filter(product_class=obj_class)
-    print(amounts)
-    for obj in amounts:
-        if obj.amount != 0:
-            return Response({'error':'لا تستطيع حذف هذه المادة لانها غير منتهية الكمية '})
+    amounts=Amounts.objects.filter(product_class=obj_class,amount__gt=0).first()
+    if amounts:
+        return Response({'error':f' يوجد كميات من النوع {amounts.is_available} من هذه المادة, لذا لا يمكنك حذفها'},status=status.HTTP_400_BAD_REQUEST)
     obj_class.active='No'
     obj_class.save()
     try:
@@ -507,7 +505,7 @@ def class_type_delete(request):
         for staff_member in staff_users:
                 Add_Delete.objects.create(
                     changer=user,
-                    change_type='حذف',
+                    change_type='الغاء تفعيل',
                     name=obj_class.product.name,
                     type=obj_class.type,
                     reader=staff_member,
@@ -516,6 +514,55 @@ def class_type_delete(request):
     except Group.DoesNotExist:
         print("Warning: Staff group does not exist")
 
+    Notification.objects.create(
+        user=user,
+        message=f"قام {user} بالغاء تفعيل المادة {obj_class.type}"
+
+    )
+
+    print('done')
+    return Response({
+        'details':'done!'
+    }, status=HTTP_200_OK)
+
+
+
+@api_view(['POST'])
+def class_type_undelete(request):
+    data = {
+        'class_id': request.data.get('class_id'),
+
+    }
+    user = request.user
+    is_manager = request.user.groups.filter(name="staff").exists()
+    print("hi")
+
+    print(data)
+
+    obj_class= Class.objects.get(id=data['class_id'])
+    obj_class.active='Yes'
+    obj_class.save()
+    try:
+
+        staff_group = Group.objects.get(name="staff")
+        staff_users = User.objects.filter(groups=staff_group)
+        for staff_member in staff_users:
+                Add_Delete.objects.create(
+                    changer=user,
+                    change_type='تفعيل',
+                    name=obj_class.product.name,
+                    type=obj_class.type,
+                    reader=staff_member,
+
+                )
+    except Group.DoesNotExist:
+        print("Warning: Staff group does not exist")
+
+    Notification.objects.create(
+        user=user,
+        message=f"قام {user} بتفعيل المادة {obj_class.type}"
+
+    )
 
     print('done')
     return Response({

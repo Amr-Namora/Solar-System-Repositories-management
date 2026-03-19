@@ -44,7 +44,7 @@ admin.site.register(Amounts, AmountsAdmin)
 
 class ReservationsAdmin(admin.ModelAdmin):
     model = Reservations
-    list_display = ( 'amount','reservation_type','product_class','id')
+    list_display = ( 'amount','reservation_type','finalActionTime','product_class','id')
     search_fields = ['workshop__name', 'amount']  # This will search through related Person fields
 
 
