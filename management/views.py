@@ -369,15 +369,14 @@ def edit_product_name(request):
             name=obj.name,
             type=data['new_name'],
             reader=user,
-            details=obj.name
+            details=f"من {oldname} الى {obj.name}"
 
         )
     except Group.DoesNotExist:
         print("Warning: Staff group does not exist")
-    users=User.objects.all()
-    for curuser in users:
-        Notification.objects.create(
-        user=curuser,
+    
+    Notification.objects.create(
+        user=user,
         message =f' لقد تم تغيير اسم {oldname}  الى {obj.name} '
         )
     #users=CustomUser.objects.all()
@@ -460,15 +459,13 @@ def class_type_name(request):
                     name=obj.product.name,
                     type=data['new_type'],
                     reader=staff_member,
-                    details=obj.type
+                    details=f' لقد تم تغيير اسم {oldType} من {obj.product.name} الى {obj.type} '
 
                 )
     except Group.DoesNotExist:
         print("Warning: Staff group does not exist")
-    users=User.objects.all()
-    for curuser in users:
-        Notification.objects.create(
-        user=curuser,
+    Notification.objects.create(
+        user=user,
         message =f' لقد تم تغيير اسم {oldType} من {obj.product.name} الى {obj.type} '
         )
     #users=CustomUser.objects.all()
@@ -881,17 +878,68 @@ def add_product(request):
                 change_type='اضافة مادة',
                 name=data['name'],
                 reader=staff_member,
-
+                details=f'الى المستودع {product_object.reposotory}'
             )
     except Group.DoesNotExist:
         print("Warning: Staff group does not exist")
 
+    Notification.objects.create(
+        user=user,
+        message=f'قام {user} باضافة المادة {product_object.name} الى المستودع {product_object.reposotory}'
 
+    )
 
 
     return Response({
         'done!'
     }, status=HTTP_201_CREATED)
+
+@api_view(['POST'])
+def edit_amount_Amount(request):
+    #editing amounts in the reposotory by the staff 
+
+    data = {
+        'amount_id': request.data.get('amount_id') ,
+        'new_amount': request.data.get('new_amount') ,
+    }
+    is_manager = request.user.groups.filter(name="staff").exists()
+    if not is_manager:
+        return Response({'error':'غير مسموح لك بتعديل الكمية'},status=status.HTTP_403_FORBIDDEN)
+    if not data['amount_id'] or not data['new_amount']:
+        return Response({'error':'amount_id and new_amount are required'},status=status.HTTP_400_BAD_REQUEST)   
+    try:
+        amount_obj = Amounts.objects.get(id=data['amount_id'])
+    except Amounts.DoesNotExist:
+        return Response({'error':'Amount not found'},status=status.HTTP_404_NOT_FOUND)
+    old_amount = amount_obj.amount
+    amount_obj.amount = data['new_amount']
+    amount_obj.save()
+    product_obj = amount_obj.product_class.product
+    amount_changed = int(data['new_amount']) - old_amount
+    if amount_obj.is_available == 'متاح':
+        product_obj.total_available += amount_changed
+        product_obj.save()
+    elif amount_obj.is_available == 'قيد الوصول':
+        product_obj.total_on_way += amount_changed
+        product_obj.save()
+    user = request.user
+    
+    
+    Add_Delete.objects.create(
+                changer=user ,
+                change_type='تعديل كمية',
+                name=product_obj.name,
+                type=amount_obj.product_class.type,
+                reader=user,
+                details=f'تم تعديل الكمية من {old_amount} الى {amount_obj.amount} في حالة {amount_obj.is_available} في المستودع {product_obj.reposotory}'
+            )
+    Notification.objects.create(
+        user=user,
+        message=f'قام {user} بتعديل الكمية في المادة {product_obj.name} في المستودع {product_obj.reposotory}'
+    )
+    return Response({
+        'done!' 
+    }, status=HTTP_200_OK)
 
 
 
@@ -1003,18 +1051,7 @@ def add_class(request=None, custom_data=None,user=None):
             )
     except Group.DoesNotExist:
         print("Warning: Staff group does not exist")
-    users=User.objects.filter(store__name=product.reposotory.name)
-    if Reservations.objects.filter(
-            product_class__product=product,
-            product_class__type=data['type'],
-            reservation_type='requested for workshops'
-            ).exists():
-                print('dsa')
-                for curuser in users:
-                    Notification.objects.create(
-                    user=curuser,
-                    message=f'تم اضافة كمية من المادة {Class_object.type} ولديك طلب لشراء هذه المادة لاحد الورشات الرجاء معالجة طلب الشراء'
-                    )
+    
     return Response({'done!'}, status=HTTP_201_CREATED)
 
 
@@ -1115,28 +1152,27 @@ def changetype(request):
             user = request.user
             default_user = User.objects.filter(groups__name="staff").first()
 
-            try:
+            # try:
 
-                staff_group = Group.objects.get(name="staff")
-                staff_users = User.objects.filter(groups=staff_group)
-                for staff_member in staff_users:
-                   if request.user != staff_member:
-                    print('hiiiiiiiiii')
-                    print(user)
-                    Add_Delete.objects.create(
-                        changer=user ,
-                        change_type='تعديل',
-                        name=class_obj.product.name,
-                        amount=data['amount'],
-                        type=class_obj.type,
-                        reader=staff_member,
-                        details= amount.is_available
+            #     staff_group = Group.objects.get(name="staff")
+            #     staff_users = User.objects.filter(groups=staff_group)
+            #     for staff_member in staff_users:
+            #        if request.user != staff_member:
+            #         print('hiiiiiiiiii')
+            #         print(user)
+            #         Add_Delete.objects.create(
+            #             changer=user ,
+            #             change_type='تعديل',
+            #             name=class_obj.product.name,
+            #             amount=data['amount'],
+            #             type=class_obj.type,
+            #             reader=staff_member,
+            #             details= f"من {} الى {amount.is_available}"
+            #         )
+            # except Group.DoesNotExist:
+            #     print("Warning: Staff group does not exist")
 
 
-
-                    )
-            except Group.DoesNotExist:
-                print("Warning: Staff group does not exist")
             product=class_obj.product
 
             if amount.is_available == 'متاح':
@@ -1148,15 +1184,7 @@ def changetype(request):
                 print('قيد الوصول')
                 product.save()
 
-            Add_Delete.objects.create(
-                changer=user ,
-                change_type='تعديل',
-                name=class_obj.product.name,
-                amount=data['amount'],
-                type=class_obj.type,
-                reader=user if user else default_user,
-                details=amount.is_available
-            )
+            
 
             data['is_available'] = data['new_mode_is_available']
             amount.amount -= int(data['amount'])
@@ -1211,41 +1239,41 @@ def reserve(request=None, custom_data=None, user=None):
             user =authenticated_user
             print("user.username")
 
-            print(user)
-            default_user = User.objects.filter(groups__name="staff").first()
+            # print(user)
+            # default_user = User.objects.filter(groups__name="staff").first()
 
-            try:
+            # try:
 
-                staff_group = Group.objects.get(name="staff")
-                staff_users = User.objects.filter(groups=staff_group)
-                for staff_member in staff_users:
-                   if user != staff_member:
+            #     staff_group = Group.objects.get(name="staff")
+            #     staff_users = User.objects.filter(groups=staff_group)
+            #     for staff_member in staff_users:
+            #        if user != staff_member:
 
-                    Add_Delete.objects.create(
-                        changer=user ,
-                        change_type='حجز',
-                        name=name,
-                        amount=data['amount'],
-                        type=type,
-                        reader=staff_member,
+            #         Add_Delete.objects.create(
+            #             changer=user ,
+            #             change_type='حجز',
+            #             name=name,
+            #             amount=data['amount'],
+            #             type=type,
+            #             reader=staff_member,
 
-                    )
-            except Group.DoesNotExist:
-                print("Warning: Staff group does not exist")
+            #         )
+            # except Group.DoesNotExist:
+            #     print("Warning: Staff group does not exist")
             product = class_obj.product
 
             product.total_available -= int(data['amount'])
             product.save()
 
 
-            Add_Delete.objects.create(
-                changer=user ,
-                change_type='حجز',
-                name=name,
-                amount=data['amount'],
-                type=type,
-                reader=user ,
-            )
+            # Add_Delete.objects.create(
+            #     changer=user ,
+            #     change_type='حجز',
+            #     name=name,
+            #     amount=data['amount'],
+            #     type=type,
+            #     reader=user ,
+            # )
 
             Reservations.objects.create(
                 amount=data['amount'],
@@ -1266,10 +1294,10 @@ def reserve(request=None, custom_data=None, user=None):
             django_request.method = 'POST'
             django_request.POST = data
             print('try')
-            Notification.objects.create(
-                user=user,
-                message=f' لقد قام {request.user.username} بحجز {amountt} قطعة من المنتج {amount.product_class.type} '
-            )
+            # Notification.objects.create(
+            #     user=user,
+            #     message=f' لقد قام {request.user.username} بحجز {amountt} قطعة من المنتج {amount.product_class.type} '
+            # )
             return add_class(django_request, custom_data=data, user=request.user)
         elif amount.amount < int(data['amount']):
             return Response({"error": "You have asked for more than what you have"}, status=HTTP_404_NOT_FOUND)
@@ -1375,32 +1403,29 @@ def cancle_reservation(request):
     x=cancle_reservation_fun(reservation.id,request.user)
     if x == 'done':
         user = request.user
-        default_user = User.objects.filter(groups__name="staff").first()
+        # default_user = User.objects.filter(groups__name="staff").first()
+        # 
+        # try:
 
-        try:
+        #     staff_group = Group.objects.get(name="staff")
+        #     staff_users = User.objects.filter(groups=staff_group)
+        #     for staff_member in staff_users:
+        #       if request.user != staff_member:
 
-            staff_group = Group.objects.get(name="staff")
-            staff_users = User.objects.filter(groups=staff_group)
-            for staff_member in staff_users:
-              if request.user != staff_member:
+        #         Add_Delete.objects.create(
+        #             changer=user ,
+        #             change_type='الغاء حجز',
+        #             name=data['name'],
+        #             amount=data['amount'],
+        #             type=data['type'],
+        #             reader=staff_member,
 
-                Add_Delete.objects.create(
-                    changer=user ,
-                    change_type='الغاء حجز',
-                    name=data['name'],
-                    amount=data['amount'],
-                    type=data['type'],
-                    reader=staff_member,
-
-                )
-                Notification.objects.create(
-                    user=staff_member,
-                    message=f' لقد تم الغاء حجز {res_owner.username}  من المنتج {amount.product_class.type} من قبل {request.user.username} '
-                )
-        except Group.DoesNotExist:
-            print("Warning: Staff group does not exist")
+        #         )
+                
+        # except Group.DoesNotExist:
+        #     print("Warning: Staff group does not exist")
         Add_Delete.objects.create(
-            changer=user ,
+            changer=res_owner ,
             change_type='الغاء حجز',
             name=data['name'],
             amount=data['amount'],
@@ -1409,7 +1434,7 @@ def cancle_reservation(request):
         )
         Notification.objects.create(
             user=res_owner,
-            message=f' لقد تم الغاء حجزك بكمية {amountt} قطعة من المنتج {amount.product_class.type} من قبل {staff_member.username} '
+            message=f' لقد قام {user} بالغاء حجز {res_owner} بكمية {amountt} قطعة من المنتج {amount.product_class.type}'
         )
         
         data['is_available'] = 'متاح'
@@ -1526,35 +1551,35 @@ def confirm_reservation(request):
         user = request.user
         default_user = User.objects.filter(groups__name="staff").first()
 
-        try:
+        # try:
 
-            staff_group = Group.objects.get(name="staff")
-            staff_users = User.objects.filter(groups=staff_group)
-            for staff_member in staff_users:
-              if request.user != staff_member:
+        #     staff_group = Group.objects.get(name="staff")
+        #     staff_users = User.objects.filter(groups=staff_group)
+        #     for staff_member in staff_users:
+        #       if request.user != staff_member:
 
-                Add_Delete.objects.create(
-                    changer=user  ,
-                    change_type='تسليم',
-                    name=data['name'],
-                    amount=data['amount'],
-                    type=data['type'],
-                    reader=staff_member,
-                )
-        except Group.DoesNotExist:
-            print("Warning: Staff group does not exist")
-        Add_Delete.objects.create(
-            changer=user ,
-            change_type='تسليم',
-            name=data['name'],
-            amount=data['amount'],
-            type=data['type'],
-            reader=user ,
-        )
-        Notification.objects.create(
-            user=res_own,
-            message=f' لقد تم تاكيد حجز {res_own.username} بكمية {amountt} قطعة من المنتج {amount.product_class.type}  '
-        )
+        #         Add_Delete.objects.create(
+        #             changer=user  ,
+        #             change_type='تسليم',
+        #             name=data['name'],
+        #             amount=data['amount'],
+        #             type=data['type'],
+        #             reader=staff_member,
+        #         )
+        # except Group.DoesNotExist:
+        #     print("Warning: Staff group does not exist")
+        # Add_Delete.objects.create(
+        #     changer=user ,
+        #     change_type='تسليم',
+        #     name=data['name'],
+        #     amount=data['amount'],
+        #     type=data['type'],
+        #     reader=user ,
+        # )
+        # Notification.objects.create(
+        #     user=res_own,
+        #     message=f' لقد تم تاكيد حجز {res_own.username} بكمية {amountt} قطعة من المنتج {amount.product_class.type}  '
+        # )
         old_rep_obj=reservation.product_class.product.reposotory
         new_rep_obj=Reposotory.objects.get(name=res_own.store.name)
 
@@ -1644,42 +1669,42 @@ def send_reservation(request):
                         return Response({'error': 'هناك حجز مطلوب لصالح ورشة لهذه المادة. قم بمعالجة ذلك الحجز اولا.'},
                                     status=HTTP_400_BAD_REQUEST)
             user = request.user
-            default_user = User.objects.filter(groups__name="staff").first()
-            try:
-                print("4 ") 
+            # default_user = User.objects.filter(groups__name="staff").first()
+            # try:
+            #     print("4 ") 
 
-                staff_group = Group.objects.get(name="staff")
-                staff_users = User.objects.filter(groups=staff_group)
-                for staff_member in staff_users:
-                  if request.user != staff_member:
-                    Add_Delete.objects.create(
-                        changer=user ,
-                        change_type='تسليم',
-                        name=data['name'],
-                        amount=data['amount'],
-                        type=data['type'],
-                        reader=staff_member,
-                    )
-            except Group.DoesNotExist:
-                print("Warning: Staff group does not exist")
-            Add_Delete.objects.create(
-                changer=user ,
-                change_type='ارسال',
-                name=data['name'],
-                amount=data['amount'],
-                type=data['type'],
-                reader=user ,
-            )
-            print("5 ") 
+            #     staff_group = Group.objects.get(name="staff")
+            #     staff_users = User.objects.filter(groups=staff_group)
+            #     for staff_member in staff_users:
+            #       if request.user != staff_member:
+            #         Add_Delete.objects.create(
+            #             changer=user ,
+            #             change_type='تسليم',
+            #             name=data['name'],
+            #             amount=data['amount'],
+            #             type=data['type'],
+            #             reader=staff_member,
+            #         )
+            # except Group.DoesNotExist:
+            #     print("Warning: Staff group does not exist")
+            # Add_Delete.objects.create(
+            #     changer=user ,
+            #     change_type='ارسال',
+            #     name=data['name'],
+            #     amount=data['amount'],
+            #     type=data['type'],
+            #     reader=user ,
+            # )
+            # print("5 ") 
 
-            Notification.objects.create(
-                user=res_own,
-                message=f' لقد تم ارسال حجزك بكمية {amountt} قطعة من المنتج {amount.product_class.type}  '
-            )
-            Notification.objects.create(
-                user=request.user,
-                message=f' لقد قام {request.user.username}  بارسال حجز بكمية {amountt} قطعة من المنتج {amount.product_class.type}  '
-            )
+            # Notification.objects.create(
+            #     user=res_own,
+            #     message=f' لقد تم ارسال حجزك بكمية {amountt} قطعة من المنتج {amount.product_class.type}  '
+            # )
+            # Notification.objects.create(
+            #     user=request.user,
+            #     message=f' لقد قام {request.user.username}  بارسال حجز بكمية {amountt} قطعة من المنتج {amount.product_class.type}  '
+            # )
             reservation.reservation_type='sent'
             print('reservation.workshop')
             print(reservation.workshop)
@@ -1742,42 +1767,42 @@ def send_requested_reservation(request):
 
     if reservation :
         user = request.user
-        default_user = User.objects.filter(groups__name="staff").first()
-        try:
-            print("4 ") 
+        # default_user = User.objects.filter(groups__name="staff").first()
+        # try:
+        #     print("4 ") 
 
-            staff_group = Group.objects.get(name="staff")
-            staff_users = User.objects.filter(groups=staff_group)
-            for staff_member in staff_users:
-              if request.user != staff_member:
-                Add_Delete.objects.create(
-                    changer=user ,
-                    change_type='تسليم',
-                    name=data['name'],
-                    amount=data['amount'],
-                    type=data['type'],
-                    reader=staff_member,
-                )
-        except Group.DoesNotExist:
-            print("Warning: Staff group does not exist")
-        Add_Delete.objects.create(
-            changer=user ,
-            change_type='ارسال',
-            name=data['name'],
-            amount=data['amount'],
-            type=data['type'],
-            reader=user ,
-        )
-        print("5 ") 
+        #     staff_group = Group.objects.get(name="staff")
+        #     staff_users = User.objects.filter(groups=staff_group)
+        #     for staff_member in staff_users:
+        #       if request.user != staff_member:
+        #         Add_Delete.objects.create(
+        #             changer=user ,
+        #             change_type='تسليم',
+        #             name=data['name'],
+        #             amount=data['amount'],
+        #             type=data['type'],
+        #             reader=staff_member,
+        #         )
+        # except Group.DoesNotExist:
+        #     print("Warning: Staff group does not exist")
+        # Add_Delete.objects.create(
+        #     changer=user ,
+        #     change_type='ارسال',
+        #     name=data['name'],
+        #     amount=data['amount'],
+        #     type=data['type'],
+        #     reader=user ,
+        # )
+        # print("5 ") 
 
-        Notification.objects.create(
-            user=res_own,
-            message=f' لقد تم ارسال حجزك بكمية {amountt} قطعة من المنتج {amount.product_class.type}  '
-        )
-        Notification.objects.create(
-            user=request.user,
-            message=f' لقد قام {request.user.username}  بارسال حجز بكمية {amountt} قطعة من المنتج {amount.product_class.type}  '
-        )
+        # Notification.objects.create(
+        #     user=res_own,
+        #     message=f' لقد تم ارسال حجزك بكمية {amountt} قطعة من المنتج {amount.product_class.type}  '
+        # )
+        # Notification.objects.create(
+        #     user=request.user,
+        #     message=f' لقد قام {request.user.username}  بارسال حجز بكمية {amountt} قطعة من المنتج {amount.product_class.type}  '
+        # )
         reservation.reservation_type='sent'
         print('reservation.workshop')
         print(reservation.workshop)
@@ -1834,36 +1859,36 @@ def confirm_requested_reservation(request):
         user = request.user
         default_user = User.objects.filter(groups__name="staff").first()
 
-        try:
+        # try:
 
-            staff_group = Group.objects.get(name="staff")
-            staff_users = User.objects.filter(groups=staff_group)
-            for staff_member in staff_users:
-              if request.user != staff_member:
+        #     staff_group = Group.objects.get(name="staff")
+        #     staff_users = User.objects.filter(groups=staff_group)
+        #     for staff_member in staff_users:
+        #       if request.user != staff_member:
 
-                Add_Delete.objects.create(
-                    changer=user  ,
-                    change_type='تسليم',
-                    name=data['name'],
-                    amount=data['amount'],
-                    type=data['type'],
-                    reader=staff_member,
+        #         Add_Delete.objects.create(
+        #             changer=user  ,
+        #             change_type='تسليم',
+        #             name=data['name'],
+        #             amount=data['amount'],
+        #             type=data['type'],
+        #             reader=staff_member,
 
-                )
-        except Group.DoesNotExist:
-            print("Warning: Staff group does not exist")
-        Add_Delete.objects.create(
-            changer=user ,
-            change_type='تسليم',
-            name=data['name'],
-            amount=data['amount'],
-            type=data['type'],
-            reader=user ,
-        )
-        Notification.objects.create(
-            user=res_own,
-            message=f' لقد تم اعادة ما تبقى من الورشة بكمية {amountt} قطعة من المنتج {class_obj.type}  '
-        )
+        #         )
+        # except Group.DoesNotExist:
+        #     print("Warning: Staff group does not exist")
+        # Add_Delete.objects.create(
+        #     changer=user ,
+        #     change_type='تسليم',
+        #     name=data['name'],
+        #     amount=data['amount'],
+        #     type=data['type'],
+        #     reader=user ,
+        # )
+        # Notification.objects.create(
+        #     user=res_own,
+        #     message=f' لقد تم اعادة ما تبقى من الورشة بكمية {amountt} قطعة من المنتج {class_obj.type}  '
+        # )
         old_rep_obj=reservation.product_class.product.reposotory
         new_rep_obj=Reposotory.objects.get(name=user.repository.name)
 
@@ -1946,14 +1971,11 @@ def cancle_requested_reservation(request):
                     reader=staff_member,
 
                 )
-                Notification.objects.create(
-                    user=staff_member,
-                    message=f' لقد تم الغاء حجز {res_owner.username}  من المنتج {amount.product_class.type} من قبل {request.user.username} '
-                )
+                
         except Group.DoesNotExist:
             print("Warning: Staff group does not exist")
         Add_Delete.objects.create(
-            changer=user ,
+            changer=res_owner ,
             change_type='الغاء حجز',
             name=data['name'],
             amount=data['amount'],
@@ -1962,7 +1984,7 @@ def cancle_requested_reservation(request):
         )
         Notification.objects.create(
             user=res_owner,
-            message=f' لقد تم الغاء حجزك بكمية {amountt} قطعة من المنتج {amount.product_class.type} من قبل {staff_member.username} '
+            message=f' لقد قام {user} الغاء حجز {res_owner} بكمية {amountt} قطعة من المنتج {amount.product_class.type} '
         )
         
         
@@ -2210,7 +2232,11 @@ def turnResevation(request):
     if data['new_workshop_name']:
         new_workshop=Workshop.objects.get(name=data['new_workshop_name'])
         reservauion.newWorkshop=new_workshop
+        if reservauion.reservation_type=='returned from workshops':
+            reservauion.reservation_type='sent'
         new_user=new_workshop.manager
+        new_workshop.is_working='Yes'
+        new_workshop.save()
         reservauion.save()
     elif data['new_username']:
         new_user=User.objects.get(username=data['new_username'])
@@ -2385,7 +2411,7 @@ def ended_workshops(request):
 @api_view(['GET'])
 def workshops_has_manager(request):
     
-    workshops=Workshop.objects.filter(Q(is_working='Yes')|Q(is_working='not started yet'),manager__isnull=False)
+    workshops=Workshop.objects.filter(Q(is_working='Yes')|Q(is_working='not started yet'),manager__isnull=False).order_by('createAt')
 
     serializer=WorkshopSerializer(workshops,many=True)
     return Response({
@@ -2970,12 +2996,21 @@ def unused_amount(request):
         
 
         if data['reposotory_id'] :
-
-            if  User.objects.filter(store__name=reposotorie.name).exclude(is_active=False).exists() :
-                rep_user=User.objects.filter(store__name=reposotorie.name).exclude(is_active=False).first()   
+            # Get active users in this repository, then exclude programmers
+            user_obj = User.objects.filter(
+                repository=reposotorie, 
+                is_active=True
+            ).exclude(groups__name='programers').first()
             
-            else :
-                rep_user=User.objects.filter(groups__name='boss').first()
+            if user_obj:
+                rep_user = user_obj
+                print('rep_user', rep_user)
+            else:
+                # Get active bosses, then exclude programmers
+                rep_user = User.objects.filter(
+                    groups__name='boss', 
+                    is_active=True
+                ).exclude(groups__name='programers').first()
 
             Add_Delete.objects.create(
                 changer=request.user ,
@@ -3012,7 +3047,6 @@ def unused_amount(request):
                 product_class=reservation.product_class,
                 user=rep_user,
                 reservation_type='returned from workshops',
-                workshop=reservation.workshop
             )
         elif data['workshop_id'] and not data['reposotory_id'] :
             Reservations.objects.create(
