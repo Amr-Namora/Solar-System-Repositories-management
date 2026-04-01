@@ -66,7 +66,7 @@ urlpatterns = [
     path('home_for_reposotory_bill/', views.home_for_reposotory_bill, name='home_for_reposotory_bill'),
     path('cancle_requested_reservation/', views.cancle_requested_reservation, name='cancle_requested_reservation'),
     path('edit_bill/',views.edit_bill,name='edit_bill'),
-    path('my_script',views.my_script,name='my_script'),
+    path('my_script/',views.my_script,name='my_script'),
     path('edit_amount_Amount',views.edit_amount_Amount,name='edit_amount_Amount'),
 
 

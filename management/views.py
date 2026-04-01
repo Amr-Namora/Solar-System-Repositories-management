@@ -730,6 +730,7 @@ def newreservation(request):
     if data.get('workshop_id'):
         details = details.filter(Q(workshop__id=data['workshop_id'])|Q(newWorkshop__id=data['workshop_id']))
 
+    details = details.filter(is_deleted=False)
     details = details.select_related(
         'user', 'user__store', 'user__repository', 'newOwner', 'newOwner__store', 
         'workshop', 'workshop__manager', 'product_class', 'product_class__product', 
@@ -2869,7 +2870,7 @@ def Workshop_details(request):
         print('hiiii')
         workshop_obj=Workshop.objects.get(id=data['workshop_id'])
         print('workshop_obj',workshop_obj)
-        reservations=Reservations.objects.filter(Q(workshop=workshop_obj)|Q(newWorkshop=workshop_obj)).exclude(reservation_type='returned from workshops').order_by('-finalActionTime')
+        reservations=Reservations.objects.filter(Q(workshop=workshop_obj)|Q(newWorkshop=workshop_obj),is_deleted=False).exclude(reservation_type='returned from workshops').order_by('-finalActionTime')
         
         serializer=ReservationsSerializerForBillAndWorkshop(reservations,many=True,context={'request': request})
     except Exception as e:
@@ -3447,7 +3448,7 @@ def bill_details(request):
         print('hiiii , bill_details')
         print('bill_id',data['bill_id'])
         bill_obj=Bill.objects.get(id=data['bill_id'])
-        reservations=Reservations.objects.filter(bill=bill_obj,).order_by('finalActionTime')
+        reservations=Reservations.objects.filter(bill=bill_obj,is_deleted=False).order_by('finalActionTime')
         serializer=ReservationsSerializerForBillAndWorkshop(reservations,many=True,context={'request': request})
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR )
@@ -3724,10 +3725,11 @@ def reposotories_for_bill(request):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def my_script(request):
-    bills=Bill.objects.all()
-    for bill in bills:
-        x=str(bill.client_name)
-        if x.__len__()<2:
-            bill.is_working='done'
-            bill.save()
-    return Response({"status": "Script executed successfully"}, status=200)        
+    res=Reservations.objects.filter(is_deleted=True).exclude(user__username='amr')
+    print('deleted reservations count',res)
+    for r in res:
+        print('reservation ',r.user.username)
+
+
+
+    return Response({"done": "Script executed successfully"}, status=200)        

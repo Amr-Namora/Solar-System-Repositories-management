@@ -232,7 +232,7 @@ class Reservations(models.Model):
     newWorkshop=models.ForeignKey(Workshop,related_name='new_workshops',default='',on_delete=models.PROTECT,null=True,blank=True)
 
     bill=models.ForeignKey(Bill,related_name='bill_reservations',default='',on_delete=models.PROTECT,null=True,blank=True)
-
+    is_deleted=models.BooleanField(default=False)
     used_in_workshop=models.BigIntegerField(default=-1,null=True,blank=True)
     def __str__(self):
         return f"{self.product_class.product.name}, type :{self.product_class.type} , amount:   {self.amount} is reserved"
