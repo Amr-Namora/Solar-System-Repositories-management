@@ -25,6 +25,8 @@ from management.models import Reposotory
 class MyTokenObtainPairView(TokenObtainPairView):
     serializer_class = MyTokenObtainPairSerializer
 # In your views.py
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def current_user(request):

@@ -16,7 +16,7 @@ from django.http import HttpRequest
 from django.utils import timezone
 from datetime import timedelta
 from rest_framework.status import HTTP_200_OK
-from django.db.models import Q
+from django.db.models import Q, Min
 from .models import Product, Amounts
 from .serializers import AmountsAsProductSerializer
 from .filters import Add_Delete_filter
@@ -729,8 +729,8 @@ def newreservation(request):
 
     if data.get('workshop_id'):
         details = details.filter(Q(workshop__id=data['workshop_id'])|Q(newWorkshop__id=data['workshop_id']))
-
     details = details.filter(is_deleted=False)
+    # details = details.filter(is_deleted=False).order_by('-finalActionTime')
     details = details.select_related(
         'user', 'user__store', 'user__repository', 'newOwner', 'newOwner__store', 
         'workshop', 'workshop__manager', 'product_class', 'product_class__product', 
@@ -3725,11 +3725,23 @@ def reposotories_for_bill(request):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def my_script(request):
-    res=Reservations.objects.filter(is_deleted=True).exclude(user__username='amr')
-    print('deleted reservations count',res)
-    for r in res:
-        print('reservation ',r.user.username)
+    min_time_data = Reservations.objects.filter(
+        finalActionTime__isnull=False
+    ).aggregate(Min('finalActionTime'))
+    
+    min_time = min_time_data['finalActionTime__min']
 
+    if min_time:
+        # 2. Find objects where finalActionTime is null
+        null_objects = Reservations.objects.filter(finalActionTime__isnull=True)
+        count = null_objects.count()
+
+        # 3. Bulk update those objects
+        null_objects.update(finalActionTime=min_time)
+        
+        print(f"Successfully updated {count} objects with timestamp: {min_time}")
+    else:
+        print("No reference minimum time found (database might be empty or all are null).")
 
 
     return Response({"done": "Script executed successfully"}, status=200)        
