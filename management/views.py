@@ -567,34 +567,36 @@ def class_type_undelete(request):
     }, status=HTTP_200_OK)
 
 
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.status import HTTP_200_OK, HTTP_400_BAD_REQUEST
+from .models import PushToken
 
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def register_push_token(request):
-    """Register or update a push token for the authenticated user.
-    Expects JSON: {"push_token": "ExponentPushToken[...]", "platform": "android"}
-    """
     token = request.data.get('push_token')
     platform = request.data.get('platform', '')
     if not token:
         return Response({'detail': 'push_token is required'}, status=HTTP_400_BAD_REQUEST)
 
-    obj, created = PushToken.objects.update_or_create(
+    PushToken.objects.update_or_create(
         token=token,
-        defaults={'user': request.user if request.user and request.user.is_authenticated else None, 'platform': platform, 'is_active': True}
+        defaults={'user': request.user, 'platform': platform, 'is_active': True}
     )
     return Response({'detail': 'registered'}, status=HTTP_200_OK)
 
 
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def unregister_push_token(request):
-    """Unregister a push token (delete or deactivate). Expects {"push_token": "..."}"""
     token = request.data.get('push_token')
     if not token:
         return Response({'detail': 'push_token is required'}, status=HTTP_400_BAD_REQUEST)
 
-    PushToken.objects.filter(token=token).delete()
+    PushToken.objects.filter(token=token, user=request.user).delete()
     return Response({'detail': 'unregistered'}, status=HTTP_200_OK)
-
 
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from datetime import datetime, timedelta
@@ -3725,23 +3727,10 @@ def reposotories_for_bill(request):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def my_script(request):
-    min_time_data = Reservations.objects.filter(
-        finalActionTime__isnull=False
-    ).aggregate(Min('finalActionTime'))
-    
-    min_time = min_time_data['finalActionTime__min']
-
-    if min_time:
-        # 2. Find objects where finalActionTime is null
-        null_objects = Reservations.objects.filter(finalActionTime__isnull=True)
-        count = null_objects.count()
-
-        # 3. Bulk update those objects
-        null_objects.update(finalActionTime=min_time)
-        
-        print(f"Successfully updated {count} objects with timestamp: {min_time}")
-    else:
-        print("No reference minimum time found (database might be empty or all are null).")
-
+    user=User.objects.filter(username='amr').first()
+    notificatiion=Notification.objects.create(
+        user=user,
+        message=f' hiiii '
+    )
 
     return Response({"done": "Script executed successfully"}, status=200)        

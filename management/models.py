@@ -178,7 +178,6 @@ class Notification(models.Model):
 
 
 class PushToken(models.Model):
-    """Stores Expo push tokens for users/devices."""
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
@@ -187,13 +186,12 @@ class PushToken(models.Model):
         related_name='push_tokens'
     )
     token = models.CharField(max_length=255, unique=True)
-    platform = models.CharField(max_length=20, null=True, blank=True)
+    platform = models.CharField(max_length=20, blank=True,null=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"{self.token} ({'active' if self.is_active else 'inactive'})"
-
+        return f"{self.user} - {self.token[:20]}..."
 
 class Reservations(models.Model):
     types = (
