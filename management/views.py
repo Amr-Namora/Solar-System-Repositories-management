@@ -3730,7 +3730,7 @@ def my_script(request):
     user=User.objects.filter(username='amr').first()
     notificatiion=Notification.objects.create(
         user=user,
-        message=f' hiiii '
+        message=f' اخيرا 🔥🔥 '
     )
 
     return Response({"done": "Script executed successfully"}, status=200)        

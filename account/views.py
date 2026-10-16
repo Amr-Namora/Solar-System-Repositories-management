@@ -502,6 +502,9 @@ def profile(request):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def ping(request):
+    base_qs= Product.objects.filter(
+            classes__amounts__is_available ='متاح'
+        )
     return Response({"status": "awake"}, status=200)
 
 
